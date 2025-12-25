@@ -1,0 +1,37 @@
+{
+  "tools": [
+    {
+      "id": "mcp-time-server",
+      "name": "MCP Time Server",
+      "description": "Time and timezone utilities via MCP",
+      "type": "openapi",
+      "url": "http://mcp-server:8000/time",
+      "headers": {
+        "Authorization": "Bearer ${MCP_API_KEY}"
+      },
+      "enabled": true
+    },
+    {
+      "id": "mcp-fetch-server",
+      "name": "MCP Fetch Server",
+      "description": "HTTP fetch and web scraping capabilities via MCP",
+      "type": "openapi",
+      "url": "http://mcp-server:8000/fetch",
+      "headers": {
+        "Authorization": "Bearer ${MCP_API_KEY}"
+      },
+      "enabled": true
+    },
+    {
+      "id": "mcp-brave-search",
+      "name": "MCP Brave Search",
+      "description": "Web and local search via Brave Search API",
+      "type": "openapi",
+      "url": "http://mcp-server:8000/brave-search",
+      "headers": {
+        "Authorization": "Bearer ${MCP_API_KEY}"
+      },
+      "enabled": true
+    }
+  ]
+}

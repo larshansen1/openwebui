@@ -1,0 +1,33 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Volume data directories
+ollama_data/
+openwebui_data/
+postgres_data/
+qdrant_data/
+*_data/
+
+# Docker volumes
+volumes/
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# MCP generated config (contains secrets - template only should be in git)
+mcp_config/config.json
+
+# Backup files
+*.bak
+*~
+
+# Security sensitive files
+secrets/
+*.key
+*.pem
