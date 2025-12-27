@@ -119,6 +119,22 @@ curl -X POST \
   -d "text=Test from Open WebUI monitoring"
 ```
 
+### Grafana or Prometheus constantly restarting
+
+If Grafana or Prometheus are stuck in a restart loop, check for permission issues:
+
+```bash
+docker logs openwebui-grafana --tail 20
+docker logs openwebui-prometheus --tail 20
+```
+
+If you see "Permission denied" or "not writable" errors, fix permissions:
+
+```bash
+./scripts/init-monitoring.sh
+docker compose restart grafana prometheus
+```
+
 ### High memory usage
 
 Prometheus data retention is set to 15 days. To reduce:
@@ -135,6 +151,25 @@ Monitoring data is stored in:
 - `./alertmanager_data` - Alert state
 
 **Note:** These directories are excluded from git via `.gitignore`.
+
+### Directory Permissions
+
+Grafana and Prometheus containers run as specific non-root users and require correct ownership:
+- Grafana: UID 472
+- Prometheus/Alertmanager: UID 65534 (nobody)
+
+The deployment script (`scripts/deploy.sh`) automatically initializes these directories with correct permissions. If you need to manually fix permissions:
+
+```bash
+./scripts/init-monitoring.sh
+```
+
+Or manually:
+```bash
+sudo chown -R 472:472 grafana_data
+sudo chown -R 65534:65534 prometheus_data
+sudo chown -R 65534:65534 alertmanager_data
+```
 
 ## Maintenance
 

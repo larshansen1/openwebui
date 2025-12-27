@@ -57,6 +57,16 @@ echo -e "${YELLOW}🛑 Stopping containers gracefully...${NC}"
 docker compose down --remove-orphans
 echo ""
 
+# Initialize monitoring data directories with correct permissions
+echo -e "${GREEN}📁 Initializing monitoring data directories...${NC}"
+# Grafana runs as UID 472, Prometheus/Alertmanager as UID 65534
+mkdir -p grafana_data prometheus_data alertmanager_data
+sudo chown -R 472:472 grafana_data 2>/dev/null || true
+sudo chown -R 65534:65534 prometheus_data 2>/dev/null || true
+sudo chown -R 65534:65534 alertmanager_data 2>/dev/null || true
+echo "Monitoring directories initialized"
+echo ""
+
 # Rebuild images if needed
 if [ "$REBUILD_NEEDED" = true ]; then
     echo -e "${GREEN}🔨 Rebuilding Docker images...${NC}"
