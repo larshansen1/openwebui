@@ -35,3 +35,8 @@ secrets/
 # Deployment backups
 backups/
 actions-runner/
+
+# Monitoring data directories
+prometheus_data/
+grafana_data/
+alertmanager_data/

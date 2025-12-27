@@ -1,0 +1,29 @@
+groups:
+  - name: latency_alerts
+    interval: 30s
+    rules:
+      - alert: HighRequestLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(openwebui_http_server_duration_milliseconds_bucket[5m])
+          ) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          component: openwebui
+        annotations:
+          summary: "High request latency detected"
+          description: "95th percentile request latency is {{ $value | humanizeDuration }}. Users are experiencing slow responses."
+          
+      - alert: CriticalRequestLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(openwebui_http_server_duration_milliseconds_bucket[5m])
+          ) > 10000
+        for: 2m
+        labels:
+          severity: critical
+          component: openwebui
+        annotations:
+          summary: "CRITICAL: Severe request latency"
+          description: "95th percentile request latency is {{ $value | humanizeDuration }}. This severely impacts user experience."

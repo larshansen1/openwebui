@@ -1,0 +1,44 @@
+groups:
+  - name: error_alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(openwebui_http_server_requests_total{http_status_code=~"5.."}[5m]))
+            /
+            sum(rate(openwebui_http_server_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: openwebui
+        annotations:
+          summary: "High API error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}. Check OpenWebUI logs and OpenRouter API status."
+          
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(openwebui_http_server_requests_total{http_status_code=~"5.."}[5m]))
+            /
+            sum(rate(openwebui_http_server_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: openwebui
+        annotations:
+          summary: "CRITICAL: Very high API error rate"
+          description: "Error rate is {{ $value | humanizePercentage }}. Service may be degraded."
+          
+      - alert: MCPToolFailures
+        expr: |
+          rate(openwebui_http_server_requests_total{http_target=~"/mcp/.*", http_status_code=~"4..|5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: mcp-server
+        annotations:
+          summary: "MCP tool failures detected"
+          description: "MCP tools (Brave Search, Time, Fetch) are experiencing failures. Check MCP_API_KEY and server health."
