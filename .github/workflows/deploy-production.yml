@@ -19,6 +19,11 @@ jobs:
           git fetch origin
           git reset --hard origin/main
 
+      - name: Validate environment variables
+        run: |
+          chmod +x ./scripts/validate-env.sh
+          ./scripts/validate-env.sh
+
       - name: Backup current state
         run: |
           chmod +x ./scripts/backup.sh
