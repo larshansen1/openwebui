@@ -31,3 +31,6 @@ mcp_config/config.json
 secrets/
 *.key
 *.pem
+
+# Deployment backups
+backups/

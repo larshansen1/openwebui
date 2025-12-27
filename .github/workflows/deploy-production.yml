@@ -1,0 +1,42 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main  # Trigger deployment when pushing to main branch
+  workflow_dispatch:  # Allow manual triggering from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # This will run on your production laptop
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Backup current state
+        run: |
+          chmod +x ./scripts/backup.sh
+          ./scripts/backup.sh
+
+      - name: Deploy changes
+        run: |
+          chmod +x ./scripts/deploy.sh
+          ./scripts/deploy.sh
+        env:
+          DEPLOYMENT_ENV: production
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for services to be healthy..."
+          sleep 10
+          docker-compose ps
+
+      - name: Send notification
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
