@@ -110,7 +110,8 @@ services:
         condition: service_started
     environment:
       # Database Configuration
-      DATABASE_URL: postgresql://openwebui:${POSTGRES_PASSWORD}@postgres:5432/openwebui
+      # Note: Password contains '/' which must be URL-encoded as '%2F'
+      DATABASE_URL: postgresql://openwebui:zxoVqsAlkgjhjk5%2FecBH@postgres:5432/openwebui
 
       # Qdrant Configuration
       ENABLE_RAG_WEB_SEARCH: "true"
@@ -158,4 +159,3 @@ services:
 networks:
   openwebui-network:
     name: openwebui_openwebui-network
-    external: true
