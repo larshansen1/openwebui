@@ -54,23 +54,23 @@ echo ""
 
 # Stop containers gracefully (but don't remove volumes!)
 echo -e "${YELLOW}🛑 Stopping containers gracefully...${NC}"
-docker-compose down --remove-orphans
+docker compose down --remove-orphans
 echo ""
 
 # Rebuild images if needed
 if [ "$REBUILD_NEEDED" = true ]; then
     echo -e "${GREEN}🔨 Rebuilding Docker images...${NC}"
-    docker-compose build --no-cache
+    docker compose build --no-cache
     echo ""
 else
     echo -e "${GREEN}🔨 Building/pulling images (using cache)...${NC}"
-    docker-compose build
+    docker compose build
     echo ""
 fi
 
 # Start services
 echo -e "${GREEN}🚀 Starting services...${NC}"
-docker-compose up -d
+docker compose up -d
 echo ""
 
 # Wait for services to be healthy
@@ -81,7 +81,7 @@ sleep 15
 # Check service health
 echo ""
 echo -e "${GREEN}📊 Service Status:${NC}"
-docker-compose ps
+docker compose ps
 echo ""
 
 # Check if critical services are running
@@ -89,7 +89,7 @@ CRITICAL_SERVICES=("openwebui" "postgres" "qdrant" "ollama")
 ALL_HEALTHY=true
 
 for service in "${CRITICAL_SERVICES[@]}"; do
-    if docker-compose ps | grep "$service" | grep -q "Up"; then
+    if docker compose ps | grep "$service" | grep -q "Up"; then
         echo -e "${GREEN}✅ $service is running${NC}"
     else
         echo -e "${RED}❌ $service is NOT running${NC}"
@@ -111,7 +111,7 @@ else
     echo "⚠️  Deployment completed with warnings"
     echo "=================================================="
     echo "Some services may not be running correctly."
-    echo "Check logs with: docker-compose logs"
+    echo "Check logs with: docker compose logs"
     echo -e "==================================================${NC}"
     exit 1
 fi

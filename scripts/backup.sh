@@ -28,13 +28,13 @@ echo ""
 
 # Backup PostgreSQL database
 echo -e "${GREEN}💾 Backing up PostgreSQL database...${NC}"
-if docker-compose ps | grep -q "openwebui-postgres.*Up"; then
+if docker compose ps | grep -q "openwebui-postgres.*Up"; then
     # Source environment variables
     if [ -f .env ]; then
         source .env
     fi
 
-    docker-compose exec -T postgres pg_dump -U openwebui openwebui > "$BACKUP_DIR/postgres_backup.sql" 2>/dev/null || {
+    docker compose exec -T postgres pg_dump -U openwebui openwebui > "$BACKUP_DIR/postgres_backup.sql" 2>/dev/null || {
         echo -e "${YELLOW}⚠️  Warning: Could not backup PostgreSQL (container may not be running)${NC}"
     }
 
@@ -89,8 +89,8 @@ Data Volumes (not backed up - preserved in place):
 
 To restore this backup:
 1. Copy configuration files back to project directory
-2. Restore PostgreSQL: docker-compose exec -T postgres psql -U openwebui openwebui < postgres_backup.sql
-3. Restart services: docker-compose up -d
+2. Restore PostgreSQL: docker compose exec -T postgres psql -U openwebui openwebui < postgres_backup.sql
+3. Restart services: docker compose up -d
 
 Note: Data volumes are preserved in place and not included in backups.
 EOF

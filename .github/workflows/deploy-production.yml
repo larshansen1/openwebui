@@ -9,10 +9,15 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted  # This will run on your production laptop
+    defaults:
+      run:
+        working-directory: /home/admin/docker/openwebui
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Pull latest changes
+        run: |
+          git fetch origin
+          git reset --hard origin/main
 
       - name: Backup current state
         run: |
@@ -30,7 +35,7 @@ jobs:
         run: |
           echo "Waiting for services to be healthy..."
           sleep 10
-          docker-compose ps
+          docker compose ps
 
       - name: Send notification
         if: always()
