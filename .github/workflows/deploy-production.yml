@@ -36,27 +36,25 @@ jobs:
         env:
           DEPLOYMENT_ENV: production
 
-      - name: Configure MCP tool servers
+      - name: Verify MCP tool servers
         run: |
-          echo "Verifying MCP server configuration..."
+          echo "Verifying MCP tool server configuration..."
           chmod +x ./scripts/verify-mcp-config.sh
           chmod +x ./scripts/reset-tool-config.sh
 
           # Try verification first
           if ! ./scripts/verify-mcp-config.sh; then
             echo ""
-            echo "MCP configuration invalid, resetting..."
-            ./scripts/reset-tool-config.sh
-            docker compose restart openwebui
-
-            # Verification script will wait for tools to register
+            echo "⚠️  MCP configuration mismatch detected!"
+            echo "    This usually means containers have old environment variables."
+            echo "    Recreating containers to reload .env..."
             echo ""
-            echo "Verifying configuration after reset..."
+            ./scripts/reset-tool-config.sh
+
+            echo ""
+            echo "Verifying again after reset..."
             ./scripts/verify-mcp-config.sh
           fi
-
-          echo ""
-          echo "✅ MCP tools configured successfully"
 
       - name: Verify deployment
         run: |
