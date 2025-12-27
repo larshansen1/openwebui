@@ -1,8 +1,5 @@
-  # At the top of docker-compose.yml:
-  # Open WebUI Production Stack
-  # Last updated: 2025-12-27
-  # Deployed via GitHub Actions CI/CD pipeline
-
+# Open WebUI Production Stack
+# Deployed via GitHub Actions CI/CD pipeline
 services:
   postgres:
     image: postgres:17
@@ -153,6 +150,59 @@ services:
 
       #Enable Auto-Tagging. Using Default prompt
       ENABLE_TAGS_GENERATION: "true"
+
+      # MCP API Key (needed for TOOL_SERVER_CONNECTIONS substitution)
+      MCP_API_KEY: ${MCP_API_KEY}
+
+      # MCP Server Connection Configuration
+      TOOL_SERVER_CONNECTIONS: |
+        [
+          {
+            "type": "openapi",
+            "url": "http://mcp-server:8000/brave-search",
+            "spec_type": "url",
+            "spec": "",
+            "path": "openapi.json",
+            "auth_type": "bearer",
+            "key": "${MCP_API_KEY}",
+            "config": { "enable": true },
+            "info": {
+              "id": "brave-search",
+              "name": "Brave Search",
+              "description": "Web and local search using Brave Search API"
+            }
+          },
+          {
+            "type": "openapi",
+            "url": "http://mcp-server:8000/time",
+            "spec_type": "url",
+            "spec": "",
+            "path": "openapi.json",
+            "auth_type": "bearer",
+            "key": "${MCP_API_KEY}",
+            "config": { "enable": true },
+            "info": {
+              "id": "time",
+              "name": "Time Tools",
+              "description": "Get current time and convert between timezones"
+            }
+          },
+          {
+            "type": "openapi",
+            "url": "http://mcp-server:8000/fetch",
+            "spec_type": "url",
+            "spec": "",
+            "path": "openapi.json",
+            "auth_type": "bearer",
+            "key": "${MCP_API_KEY}",
+            "config": { "enable": true },
+            "info": {
+              "id": "fetch",
+              "name": "Fetch Tool",
+              "description": "Fetch content from URLs"
+            }
+          }
+        ]
     volumes:
       - ./openwebui_data:/app/backend/data
     ports:
