@@ -36,6 +36,28 @@ jobs:
         env:
           DEPLOYMENT_ENV: production
 
+      - name: Configure MCP tool servers
+        run: |
+          echo "Verifying MCP server configuration..."
+          chmod +x ./scripts/verify-mcp-config.sh
+          chmod +x ./scripts/reset-tool-config.sh
+
+          # Try verification first
+          if ! ./scripts/verify-mcp-config.sh; then
+            echo "MCP configuration invalid, resetting..."
+            ./scripts/reset-tool-config.sh
+            docker compose restart openwebui
+
+            # Wait for restart
+            echo "Waiting for OpenWebUI to restart..."
+            sleep 15
+
+            # Verify again
+            ./scripts/verify-mcp-config.sh
+          fi
+
+          echo "✅ MCP tools configured successfully"
+
       - name: Verify deployment
         run: |
           echo "Waiting for services to be healthy..."
