@@ -45,14 +45,28 @@ fi
 
 echo "✓ TOOL_SERVER_CONNECTIONS has correct API key"
 
-# Check if tools are registered in database
-echo "Checking registered tools in database..."
-TOOL_COUNT=$(docker exec openwebui-postgres psql -U openwebui -d openwebui -t -c \
-    "SELECT COUNT(*) FROM config WHERE data::text LIKE '%tool_server%';" 2>/dev/null | xargs || echo "0")
+# Wait for OpenWebUI to be fully ready and register tools
+echo "Waiting for OpenWebUI to register tools in database..."
+MAX_WAIT=60
+WAITED=0
+TOOL_COUNT=0
+
+while [ $WAITED -lt $MAX_WAIT ]; do
+    TOOL_COUNT=$(docker exec openwebui-postgres psql -U openwebui -d openwebui -t -c \
+        "SELECT COUNT(*) FROM config WHERE data::text LIKE '%tool_server%';" 2>/dev/null | xargs || echo "0")
+
+    if [ "$TOOL_COUNT" != "0" ]; then
+        break
+    fi
+
+    echo "  Waiting for tools to register... (${WAITED}s/${MAX_WAIT}s)"
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
 
 if [ "$TOOL_COUNT" = "0" ]; then
-    echo "⚠ No tool servers registered in database yet (first startup)"
-    echo "  Tools will be registered on next OpenWebUI restart"
+    echo "ERROR: Tools not registered in database after ${MAX_WAIT}s"
+    echo "Check OpenWebUI logs: docker logs openwebui --tail 50"
     exit 1
 fi
 
@@ -60,12 +74,20 @@ echo "✓ Tool servers registered in database"
 
 # The definitive test: Check if database has the CURRENT API key
 echo "Verifying stored tool configuration matches current API key..."
-STORED_KEY=$(docker exec openwebui-postgres psql -U openwebui -d openwebui -t -c \
-    "SELECT data FROM config WHERE data::text LIKE '%tool_server%';" 2>/dev/null | \
-    grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+STORED_CONFIG=$(docker exec openwebui-postgres psql -U openwebui -d openwebui -t -c \
+    "SELECT data FROM config WHERE data::text LIKE '%tool_server%';" 2>/dev/null)
+
+if [ -z "$STORED_CONFIG" ]; then
+    echo "ERROR: Cannot retrieve stored configuration from database"
+    exit 1
+fi
+
+# Extract API key from stored config (handle both formats: "key":"value" and "key": "value")
+STORED_KEY=$(echo "$STORED_CONFIG" | grep -o '"key"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 
 if [ -z "$STORED_KEY" ]; then
     echo "ERROR: Cannot extract API key from stored configuration"
+    echo "Stored config: $STORED_CONFIG"
     exit 1
 fi
 

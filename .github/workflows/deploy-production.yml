@@ -44,18 +44,18 @@ jobs:
 
           # Try verification first
           if ! ./scripts/verify-mcp-config.sh; then
+            echo ""
             echo "MCP configuration invalid, resetting..."
             ./scripts/reset-tool-config.sh
             docker compose restart openwebui
 
-            # Wait for restart
-            echo "Waiting for OpenWebUI to restart..."
-            sleep 15
-
-            # Verify again
+            # Verification script will wait for tools to register
+            echo ""
+            echo "Verifying configuration after reset..."
             ./scripts/verify-mcp-config.sh
           fi
 
+          echo ""
           echo "✅ MCP tools configured successfully"
 
       - name: Verify deployment
