@@ -34,6 +34,13 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
+# Load environment variables from .env file
+echo -e "${GREEN}📝 Loading environment variables from .env...${NC}"
+set -a  # automatically export all variables
+source .env
+set +a  # stop automatically exporting
+echo ""
+
 # Pull latest changes (if running from git)
 echo -e "${GREEN}📥 Pulling latest changes from git...${NC}"
 git pull origin main || echo "Note: git pull failed or not in a git repo"
