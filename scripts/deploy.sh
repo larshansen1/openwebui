@@ -72,15 +72,21 @@ mkdir -p grafana_data prometheus_data alertmanager_data monitoring/secrets
 # Set up Qdrant API key for Prometheus (if configured)
 if [ -n "$QDRANT_API_KEY" ]; then
     echo "Configuring Qdrant API key for Prometheus..."
+    # Remove existing file if it has restrictive permissions
+    rm -f monitoring/secrets/qdrant-api-key.txt
+    # Write the API key
     echo -n "$QDRANT_API_KEY" > monitoring/secrets/qdrant-api-key.txt
-    chmod 644 monitoring/secrets/qdrant-api-key.txt
+    # Set secure permissions (owner read-only for security)
+    chmod 600 monitoring/secrets/qdrant-api-key.txt
     # Prometheus runs as UID 65534, so set ownership using Docker
     docker run --rm -v "$(pwd)/monitoring/secrets:/secrets" alpine:latest chown 65534:65534 /secrets/qdrant-api-key.txt
 else
     echo "Warning: QDRANT_API_KEY not set - Qdrant metrics will not be available"
+    # Remove existing file if present
+    rm -f monitoring/secrets/qdrant-api-key.txt
     # Create empty file to prevent mount errors
     touch monitoring/secrets/qdrant-api-key.txt
-    chmod 644 monitoring/secrets/qdrant-api-key.txt
+    chmod 600 monitoring/secrets/qdrant-api-key.txt
 fi
 
 # Set permissions using Docker to avoid requiring sudo
