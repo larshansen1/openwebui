@@ -59,11 +59,20 @@ echo ""
 
 # Initialize monitoring data directories with correct permissions
 echo -e "${GREEN}📁 Initializing monitoring data directories...${NC}"
-# Grafana runs as UID 472, Prometheus/Alertmanager as UID 65534
+# Create directories first
 mkdir -p grafana_data prometheus_data alertmanager_data
-sudo chown -R 472:472 grafana_data 2>/dev/null || true
-sudo chown -R 65534:65534 prometheus_data 2>/dev/null || true
-sudo chown -R 65534:65534 alertmanager_data 2>/dev/null || true
+
+# Set permissions using Docker to avoid requiring sudo
+# Grafana runs as UID 472, Prometheus/Alertmanager as UID 65534
+echo "Setting permissions for Grafana (UID 472)..."
+docker run --rm -v "$(pwd)/grafana_data:/data" alpine:latest chown -R 472:472 /data
+
+echo "Setting permissions for Prometheus (UID 65534)..."
+docker run --rm -v "$(pwd)/prometheus_data:/data" alpine:latest chown -R 65534:65534 /data
+
+echo "Setting permissions for Alertmanager (UID 65534)..."
+docker run --rm -v "$(pwd)/alertmanager_data:/data" alpine:latest chown -R 65534:65534 /data
+
 echo "Monitoring directories initialized"
 echo ""
 

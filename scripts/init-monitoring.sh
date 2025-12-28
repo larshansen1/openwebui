@@ -12,17 +12,17 @@ cd "$PROJECT_DIR"
 # Create directories if they don't exist
 mkdir -p grafana_data prometheus_data alertmanager_data
 
-# Set correct ownership
+# Set correct ownership using Docker to avoid requiring sudo
 # Grafana runs as UID 472
 # Prometheus and Alertmanager run as UID 65534 (nobody)
 echo "Setting permissions for Grafana (UID 472)..."
-sudo chown -R 472:472 grafana_data
+docker run --rm -v "$(pwd)/grafana_data:/data" alpine:latest chown -R 472:472 /data
 
 echo "Setting permissions for Prometheus (UID 65534)..."
-sudo chown -R 65534:65534 prometheus_data
+docker run --rm -v "$(pwd)/prometheus_data:/data" alpine:latest chown -R 65534:65534 /data
 
 echo "Setting permissions for Alertmanager (UID 65534)..."
-sudo chown -R 65534:65534 alertmanager_data
+docker run --rm -v "$(pwd)/alertmanager_data:/data" alpine:latest chown -R 65534:65534 /data
 
 echo ""
 echo "✅ Monitoring directories initialized successfully"
