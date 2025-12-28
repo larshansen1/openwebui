@@ -32,6 +32,7 @@ scrape_configs:
         labels:
           service: 'qdrant'
     metrics_path: '/metrics'
+    bearer_token_file: '/etc/prometheus/secrets/qdrant-api-key.txt'
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'

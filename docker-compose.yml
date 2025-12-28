@@ -250,6 +250,7 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts:/etc/prometheus/alerts:ro
+      - ./monitoring/secrets:/etc/prometheus/secrets:ro
       - ./prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"  # Prometheus web UI (localhost only)
