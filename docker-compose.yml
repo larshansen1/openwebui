@@ -20,7 +20,7 @@ services:
       - openwebui-network
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.16.2
     container_name: openwebui-qdrant
     restart: unless-stopped
     environment:
@@ -62,7 +62,7 @@ services:
       - openwebui-network
 
   mcp-server:
-    image: ghcr.io/open-webui/mcpo:main
+    image: ghcr.io/open-webui/mcpo:latest
     container_name: openwebui-mcp-server
     restart: unless-stopped
     # Note: Running as root due to uvx/npx dynamic package installation requirements
@@ -223,7 +223,7 @@ services:
   # ============================================================================
 
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.142.0
     container_name: openwebui-otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otel-collector-config.yml"]
@@ -237,7 +237,7 @@ services:
     # Note: No healthcheck - collector doesn't include wget/curl, and it's working fine
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.8.1
     container_name: openwebui-prometheus
     restart: unless-stopped
     user: "65534:65534"  # Run as nobody user to match file permissions
@@ -263,7 +263,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.1.1
     container_name: openwebui-grafana
     restart: unless-stopped
     user: "472:472"  # Run as grafana user to match file permissions
@@ -287,7 +287,7 @@ services:
       retries: 3
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.29.0
     container_name: openwebui-alertmanager
     restart: unless-stopped
     user: "65534:65534"  # Run as nobody user to match file permissions
