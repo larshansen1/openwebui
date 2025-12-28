@@ -4,9 +4,11 @@
 
 set -e
 
-# Load environment variables
+# Load environment variables safely
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a  # automatically export all variables
+    source .env
+    set +a  # stop automatically exporting
 fi
 
 echo "Verifying MCP server configuration..."

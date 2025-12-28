@@ -77,8 +77,10 @@ fi
 
 # Update PostgreSQL password
 echo "Updating PostgreSQL user password..."
+# Escape single quotes in password for SQL (replace ' with '')
+NEW_POSTGRES_PASSWORD_ESCAPED=$(echo "$NEW_POSTGRES_PASSWORD" | sed "s/'/''/g")
 docker compose exec -T postgres psql -U openwebui -d openwebui <<EOF
-ALTER USER openwebui WITH PASSWORD '$NEW_POSTGRES_PASSWORD';
+ALTER USER openwebui WITH PASSWORD '$NEW_POSTGRES_PASSWORD_ESCAPED';
 EOF
 
 if [ $? -eq 0 ]; then
