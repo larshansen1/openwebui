@@ -6,6 +6,7 @@ import re
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
+from difflib import SequenceMatcher
 import frontmatter
 
 logger = logging.getLogger(__name__)
@@ -135,27 +136,77 @@ class MarkdownParser:
         Returns:
             Relative path to file, or None if not found
         """
+        result = self.resolve_wiki_link_with_score(link)
+        return result["path"] if result else None
+
+    def resolve_wiki_link_with_score(self, link: str) -> Optional[Dict[str, Any]]:
+        """
+        Resolve wiki-link to actual file path with similarity score
+
+        Handles common variations and returns the best match with a confidence score.
+
+        Args:
+            link: Wiki-link target (e.g., "My Note")
+
+        Returns:
+            Dict with 'path', 'title', 'score' (0.0-1.0), 'match_type' or None if not found
+        """
         title_map = self.build_title_map()
 
         # Try exact match (case-insensitive)
         link_lower = link.lower()
         if link_lower in title_map:
-            return title_map[link_lower]
+            return {
+                "path": title_map[link_lower],
+                "title": link_lower,
+                "score": 1.0,
+                "match_type": "exact"
+            }
 
         # Try with .md extension
         if not link.endswith('.md'):
             link_md = f"{link}.md"
             if link_md.lower() in title_map:
-                return title_map[link_md.lower()]
+                return {
+                    "path": title_map[link_md.lower()],
+                    "title": link_md.lower(),
+                    "score": 1.0,
+                    "match_type": "exact"
+                }
 
         # Try fuzzy matching (normalize separators)
-        # This handles: "concept-relationships" → "concept relationships"
         normalized_link = self._normalize_title(link)
 
         for title, path in title_map.items():
             if self._normalize_title(title) == normalized_link:
                 logger.debug(f"Fuzzy matched: {link} → {path}")
-                return path
+                return {
+                    "path": path,
+                    "title": title,
+                    "score": 0.95,
+                    "match_type": "normalized"
+                }
+
+        # Find best fuzzy match using similarity scoring
+        best_match = None
+        best_score = 0.0
+
+        for title, path in title_map.items():
+            # Calculate similarity between normalized strings
+            score = SequenceMatcher(None, normalized_link, self._normalize_title(title)).ratio()
+
+            if score > best_score and score >= 0.6:  # Minimum threshold
+                best_score = score
+                best_match = {
+                    "path": path,
+                    "title": title,
+                    "score": score,
+                    "match_type": "fuzzy"
+                }
+
+        if best_match:
+            logger.debug(f"Fuzzy matched with score {best_score:.2f}: {link} → {best_match['path']}")
+            return best_match
 
         return None
 

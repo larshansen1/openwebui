@@ -103,25 +103,27 @@ class ObsidianMCPServer:
                 ),
                 Tool(
                     name="search_notes",
-                    description="Search for notes by content and tags",
+                    description="Search for notes by content and tags with optional regex support",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "Search query"},
+                            "query": {"type": "string", "description": "Search query (literal string or regex pattern)"},
                             "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by tags"},
-                            "limit": {"type": "integer", "description": "Maximum results", "default": 50}
+                            "limit": {"type": "integer", "description": "Maximum results", "default": 50},
+                            "use_regex": {"type": "boolean", "description": "Treat query as regex pattern", "default": False}
                         },
                         "required": ["query"]
                     }
                 ),
                 Tool(
                     name="list_notes",
-                    description="List notes in the vault with optional filtering",
+                    description="List notes in the vault with optional filtering and sorting",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter by tags"},
-                            "limit": {"type": "integer", "description": "Maximum results", "default": 100}
+                            "limit": {"type": "integer", "description": "Maximum results", "default": 100},
+                            "sort_by": {"type": "string", "description": "Sort order: 'modified' (default), 'created', 'title', 'size'", "default": "modified", "enum": ["modified", "created", "title", "size"]}
                         }
                     }
                 ),
@@ -154,6 +156,27 @@ class ObsidianMCPServer:
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                Tool(
+                    name="get_note_metadata",
+                    description="Get only the metadata/frontmatter of a note without full content (faster than get_note_by_title)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Note title to search for"}
+                        },
+                        "required": ["title"]
+                    }
+                ),
+                Tool(
+                    name="get_daily_note",
+                    description="Get or create a daily note for a specific date (follows Obsidian daily notes convention)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "date": {"type": "string", "description": "Date in YYYY-MM-DD format (omit for today)"}
+                        }
+                    }
                 )
             ]
 
@@ -181,6 +204,10 @@ class ObsidianMCPServer:
                     return await self._resolve_wiki_link(arguments)
                 elif name == "list_tags":
                     return await self._list_tags(arguments)
+                elif name == "get_note_metadata":
+                    return await self._get_note_metadata(arguments)
+                elif name == "get_daily_note":
+                    return await self._get_daily_note(arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             except Exception as e:
@@ -287,8 +314,9 @@ class ObsidianMCPServer:
         query = args["query"]
         tags = args.get("tags")
         limit = args.get("limit", 50)
+        use_regex = args.get("use_regex", False)
 
-        results = self.vault.search_notes(query, tags, limit)
+        results = self.vault.search_notes(query, tags, limit, use_regex)
 
         if not results:
             return [TextContent(type="text", text="No results found")]
@@ -310,8 +338,9 @@ class ObsidianMCPServer:
         """List notes tool implementation"""
         tags = args.get("tags")
         limit = args.get("limit", 100)
+        sort_by = args.get("sort_by", "modified")
 
-        notes = self.vault.list_notes(include_frontmatter=True, limit=limit)
+        notes = self.vault.list_notes(include_frontmatter=True, limit=limit, sort_by=sort_by)
 
         # Filter by tags if provided
         if tags:
@@ -374,6 +403,48 @@ class ObsidianMCPServer:
             output += f"- {tag} ({count} notes)\n"
 
         return [TextContent(type="text", text=output)]
+
+    async def _get_note_metadata(self, args: dict) -> list[TextContent]:
+        """Get note metadata tool implementation"""
+        title = args["title"]
+
+        try:
+            metadata = self.vault.get_note_metadata(title)
+
+            output = f"# Metadata for: {metadata['name']}\n\n"
+            output += f"**Path:** {metadata['path']}\n"
+            output += f"**Match Score:** {metadata['match_score']:.2f} ({metadata['match_type']})\n"
+            output += f"**Tags:** {', '.join(metadata['tags']) if metadata['tags'] else 'None'}\n"
+            output += f"**Size:** {metadata['size']} bytes\n"
+            output += f"**Created:** {metadata['created']}\n"
+            output += f"**Modified:** {metadata['modified']}\n\n"
+
+            if metadata['frontmatter']:
+                output += "## Frontmatter\n\n"
+                for key, value in metadata['frontmatter'].items():
+                    output += f"- **{key}:** {value}\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError:
+            return [TextContent(type="text", text=f"Note not found: {title}")]
+
+    async def _get_daily_note(self, args: dict) -> list[TextContent]:
+        """Get daily note tool implementation"""
+        date = args.get("date")
+
+        try:
+            note = self.vault.get_daily_note(date)
+
+            output = f"# Daily Note: {note['name']}\n\n"
+            output += f"**Path:** {note['path']}\n"
+            output += f"**Tags:** {', '.join(note['tags'])}\n"
+            output += f"**Modified:** {note['modified']}\n\n"
+            output += "## Content\n\n"
+            output += note['content']
+
+            return [TextContent(type="text", text=output)]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
 
     def get_app(self) -> Server:
         """Get MCP server application"""

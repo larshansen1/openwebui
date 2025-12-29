@@ -58,6 +58,7 @@ class SearchNotesRequest(BaseModel):
     query: str
     tags: Optional[List[str]] = None
     limit: int = 50
+    use_regex: bool = False
 
 
 class ListNotesRequest(BaseModel):
@@ -66,6 +67,7 @@ class ListNotesRequest(BaseModel):
     include_frontmatter: bool = False
     limit: int = 100
     offset: int = 0
+    sort_by: str = "modified"
 
 
 class GetNoteByTitleRequest(BaseModel):
@@ -74,6 +76,14 @@ class GetNoteByTitleRequest(BaseModel):
 
 class ResolveWikiLinkRequest(BaseModel):
     link_name: str
+
+
+class GetNoteMetadataRequest(BaseModel):
+    title: str
+
+
+class GetDailyNoteRequest(BaseModel):
+    date: Optional[str] = None
 
 
 # Create router
@@ -234,7 +244,7 @@ async def add_to_note(request: AppendToNoteRequest):
 
 @router.post("/search_notes", dependencies=[Security(verify_api_key)])
 async def search_notes(request: SearchNotesRequest):
-    """Search notes by content and tags"""
+    """Search notes by content and tags with optional regex support"""
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -242,7 +252,8 @@ async def search_notes(request: SearchNotesRequest):
         results = vault_manager.search_notes(
             query=request.query,
             tags=request.tags,
-            limit=request.limit
+            limit=request.limit,
+            use_regex=request.use_regex
         )
 
         return {
@@ -257,7 +268,7 @@ async def search_notes(request: SearchNotesRequest):
 
 @router.post("/list_notes", dependencies=[Security(verify_api_key)])
 async def list_notes(request: ListNotesRequest):
-    """List all notes in the vault"""
+    """List all notes in the vault with optional sorting"""
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -267,7 +278,8 @@ async def list_notes(request: ListNotesRequest):
             recursive=request.recursive,
             include_frontmatter=request.include_frontmatter,
             limit=request.limit,
-            offset=request.offset
+            offset=request.offset,
+            sort_by=request.sort_by
         )
 
         return {
@@ -334,6 +346,46 @@ async def resolve_wiki_link(request: ResolveWikiLinkRequest):
     except Exception as e:
         logger.error(f"Error resolving wiki link", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to resolve wiki link")
+
+
+@router.post("/get_note_metadata", dependencies=[Security(verify_api_key)])
+async def get_note_metadata(request: GetNoteMetadataRequest):
+    """Get only the metadata/frontmatter of a note without full content"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        metadata = vault_manager.get_note_metadata(request.title)
+
+        return {
+            "success": True,
+            "metadata": metadata
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting note metadata", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get note metadata")
+
+
+@router.post("/get_daily_note", dependencies=[Security(verify_api_key)])
+async def get_daily_note(request: GetDailyNoteRequest):
+    """Get or create a daily note for a specific date"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        note = vault_manager.get_daily_note(request.date)
+
+        return {
+            "success": True,
+            "note": note
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting daily note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get daily note")
 
 
 @router.get("/list_tags", dependencies=[Security(verify_api_key)])
