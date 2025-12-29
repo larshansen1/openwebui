@@ -27,6 +27,25 @@ class VaultManager:
         )
         logger.info(f"VaultManager initialized with vault: {self.vault_path}")
 
+    def _normalize_path_case(self, path: str) -> str:
+        """
+        Normalize path to lowercase if configured (for cross-platform syncing)
+
+        Args:
+            path: Path to normalize
+
+        Returns:
+            Normalized path (lowercase if setting enabled)
+        """
+        if settings.normalize_paths_lowercase:
+            # Only normalize directory components, preserve final filename if desired
+            parts = Path(path).parts
+            # Lowercase all directory parts
+            normalized = "/".join(part.lower() for part in parts)
+            logger.debug(f"Normalized path: {path} → {normalized}")
+            return normalized
+        return path
+
     def _get_safe_path(self, relative_path: str) -> Path:
         """
         Get safe absolute path, preventing path traversal and symlink attacks
@@ -40,6 +59,9 @@ class VaultManager:
         Raises:
             ValueError: If path escapes vault or contains symlinks
         """
+        # Normalize case if configured
+        relative_path = self._normalize_path_case(relative_path)
+
         # Build path without resolving symlinks
         full_path = self.vault_path / relative_path
 
@@ -324,10 +346,13 @@ class VaultManager:
         if not new_path.endswith('.md'):
             new_path = f"{new_path}.md"
 
+        # Normalize new path (will apply lowercase if configured)
+        new_path_normalized = self._normalize_path_case(new_path)
+
         new_full_path = self._get_safe_path(new_path)
 
         if new_full_path.exists():
-            raise FileExistsError(f"Note already exists at destination: {new_path}")
+            raise FileExistsError(f"Note already exists at destination: {new_path_normalized}")
 
         # Create parent directories for new location
         new_full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -335,15 +360,15 @@ class VaultManager:
         # Move the file (preserves metadata)
         old_full_path.rename(new_full_path)
 
-        logger.info(f"Moved note: {old_path} → {new_path}")
+        logger.info(f"Moved note: {old_path} → {new_path_normalized}")
 
         # Invalidate caches
         self.cache.delete(f"note:{old_path}")
-        self.cache.delete(f"note:{new_path}")
+        self.cache.delete(f"note:{new_path_normalized}")
         self.cache.invalidate_pattern("list:")
         self.parser.invalidate_title_map()
 
-        return self.read_note(new_path)
+        return self.read_note(new_path_normalized)
 
     def delete_note(self, path: str) -> bool:
         """

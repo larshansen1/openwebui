@@ -59,6 +59,12 @@ class Settings(BaseSettings):
         description="Cache TTL in seconds (5 minutes default)"
     )
 
+    # Path handling settings
+    normalize_paths_lowercase: bool = Field(
+        default=True,
+        description="Normalize directory paths to lowercase (recommended for cross-platform syncing)"
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
