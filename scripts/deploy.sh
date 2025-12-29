@@ -131,7 +131,7 @@ docker compose ps
 echo ""
 
 # Check if critical services are running
-CRITICAL_SERVICES=("openwebui" "postgres" "qdrant" "ollama")
+CRITICAL_SERVICES=("openwebui" "postgres" "qdrant" "ollama" "obsidian-mcp")
 ALL_HEALTHY=true
 
 for service in "${CRITICAL_SERVICES[@]}"; do

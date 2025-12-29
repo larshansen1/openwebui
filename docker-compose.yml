@@ -93,6 +93,41 @@ services:
       retries: 3
       start_period: 30s
 
+  obsidian-mcp:
+    build:
+      context: ./obsidian-mcp
+      dockerfile: Dockerfile
+    container_name: openwebui-obsidian-mcp
+    restart: unless-stopped
+    user: "1000:1000"
+    entrypoint: ["/app/obsidian-mcp-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      MCP_API_KEY: ${MCP_API_KEY}
+      OBSIDIAN_VAULT_PATH: /vault  # Container path (volume mount destination)
+    volumes:
+      # Dev environment: mount local vault directory
+      # Prod environment: use syncthing-data volume (comment out dev, uncomment prod)
+      - ${OBSIDIAN_VAULT_PATH}:/vault:ro  # Dev: direct mount
+      # - syncthing-data:/vault:ro         # Prod: syncthing volume
+      - ./obsidian-mcp/obsidian-mcp-entrypoint.sh:/app/obsidian-mcp-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:8001:8000"
+    networks:
+      - openwebui-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   openwebui:
     build:
       context: .
@@ -208,6 +243,21 @@ services:
               "id": "fetch",
               "name": "Fetch Tool",
               "description": "Fetch content from URLs"
+            }
+          },
+          {
+            "type": "openapi",
+            "url": "http://obsidian-mcp:8000",
+            "spec_type": "url",
+            "spec": "",
+            "path": "openapi.json",
+            "auth_type": "bearer",
+            "key": "${MCP_API_KEY}",
+            "config": { "enable": true },
+            "info": {
+              "id": "obsidian-vault",
+              "name": "Obsidian Vault",
+              "description": "Read, create, update, and search Obsidian vault notes with wiki-link resolution"
             }
           }
         ]
@@ -325,3 +375,13 @@ services:
 networks:
   openwebui-network:
     name: openwebui_openwebui-network
+
+volumes:
+  # Syncthing data volume for Obsidian vault (production)
+  # Create with: docker volume create syncthing-data
+  # Uncomment for production:
+  # syncthing-data:
+  #   external: true
+
+  # Placeholder to keep volumes section valid
+  postgres-data:
