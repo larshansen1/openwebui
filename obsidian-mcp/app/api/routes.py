@@ -40,6 +40,11 @@ class UpdateNoteRequest(BaseModel):
     append: bool = False
 
 
+class MoveNoteRequest(BaseModel):
+    old_path: str
+    new_path: str
+
+
 class DeleteNoteRequest(BaseModel):
     file_path: str
 
@@ -123,6 +128,32 @@ async def update_note(request: UpdateNoteRequest):
     except Exception as e:
         logger.error(f"Error updating note", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update note")
+
+
+@router.post("/move_note", dependencies=[Security(verify_api_key)])
+async def move_note(request: MoveNoteRequest):
+    """Move or rename a note"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        note = vault_manager.move_note(
+            old_path=request.old_path,
+            new_path=request.new_path
+        )
+
+        return {
+            "success": True,
+            "note": note,
+            "message": f"Note moved: {request.old_path} → {note['path']}"
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error moving note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to move note")
 
 
 @router.post("/delete_note", dependencies=[Security(verify_api_key)])

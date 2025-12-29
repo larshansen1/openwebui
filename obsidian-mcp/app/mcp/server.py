@@ -67,6 +67,18 @@ class ObsidianMCPServer:
                     }
                 ),
                 Tool(
+                    name="move_note",
+                    description="Move or rename a note to a new location/path",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "old_path": {"type": "string", "description": "Current relative path to the note"},
+                            "new_path": {"type": "string", "description": "New relative path (can include subdirectories like 'folder/subfolder/name')"}
+                        },
+                        "required": ["old_path", "new_path"]
+                    }
+                ),
+                Tool(
                     name="delete_note",
                     description="Delete a note from the vault",
                     inputSchema={
@@ -153,6 +165,8 @@ class ObsidianMCPServer:
                     return await self._create_note(arguments)
                 elif name == "update_note":
                     return await self._update_note(arguments)
+                elif name == "move_note":
+                    return await self._move_note(arguments)
                 elif name == "delete_note":
                     return await self._delete_note(arguments)
                 elif name == "append_to_note":
@@ -231,6 +245,18 @@ class ObsidianMCPServer:
         return [TextContent(
             type="text",
             text=f"Updated note: {result['path']}\nModified: {result['modified']}"
+        )]
+
+    async def _move_note(self, args: dict) -> list[TextContent]:
+        """Move note tool implementation"""
+        old_path = args["old_path"]
+        new_path = args["new_path"]
+
+        result = self.vault.move_note(old_path, new_path)
+
+        return [TextContent(
+            type="text",
+            text=f"Moved note: {old_path} → {result['path']}\nNew location: {result['path']}"
         )]
 
     async def _delete_note(self, args: dict) -> list[TextContent]:

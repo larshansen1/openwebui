@@ -300,6 +300,51 @@ class VaultManager:
 
         return self.read_note(path)
 
+    def move_note(self, old_path: str, new_path: str) -> Dict[str, Any]:
+        """
+        Move/rename a note to a new location
+
+        Args:
+            old_path: Current relative path to note
+            new_path: New relative path (can include subdirectories)
+
+        Returns:
+            Moved note data at new location
+
+        Raises:
+            FileNotFoundError: If source note doesn't exist
+            FileExistsError: If destination already exists
+        """
+        old_full_path = self._get_safe_path(old_path)
+
+        if not old_full_path.exists():
+            raise FileNotFoundError(f"Note not found: {old_path}")
+
+        # Ensure .md extension on new path
+        if not new_path.endswith('.md'):
+            new_path = f"{new_path}.md"
+
+        new_full_path = self._get_safe_path(new_path)
+
+        if new_full_path.exists():
+            raise FileExistsError(f"Note already exists at destination: {new_path}")
+
+        # Create parent directories for new location
+        new_full_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Move the file (preserves metadata)
+        old_full_path.rename(new_full_path)
+
+        logger.info(f"Moved note: {old_path} → {new_path}")
+
+        # Invalidate caches
+        self.cache.delete(f"note:{old_path}")
+        self.cache.delete(f"note:{new_path}")
+        self.cache.invalidate_pattern("list:")
+        self.parser.invalidate_title_map()
+
+        return self.read_note(new_path)
+
     def delete_note(self, path: str) -> bool:
         """
         Delete note
