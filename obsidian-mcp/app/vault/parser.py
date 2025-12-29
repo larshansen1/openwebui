@@ -108,9 +108,26 @@ class MarkdownParser:
         self._title_map = title_map
         return title_map
 
+    def _normalize_title(self, title: str) -> str:
+        """
+        Normalize title for fuzzy matching
+        Converts hyphens/underscores to spaces, lowercase, strips
+        """
+        # Replace hyphens and underscores with spaces
+        normalized = title.replace('-', ' ').replace('_', ' ')
+        # Remove multiple spaces
+        normalized = ' '.join(normalized.split())
+        # Lowercase
+        return normalized.lower()
+
     def resolve_wiki_link(self, link: str) -> Optional[str]:
         """
-        Resolve wiki-link to actual file path
+        Resolve wiki-link to actual file path with fuzzy matching
+
+        Handles common variations:
+        - Case differences: "My Note" vs "my note"
+        - Separators: "my-note" vs "my note" vs "my_note"
+        - Extensions: "my note" vs "my note.md"
 
         Args:
             link: Wiki-link target (e.g., "My Note")
@@ -130,6 +147,15 @@ class MarkdownParser:
             link_md = f"{link}.md"
             if link_md.lower() in title_map:
                 return title_map[link_md.lower()]
+
+        # Try fuzzy matching (normalize separators)
+        # This handles: "concept-relationships" → "concept relationships"
+        normalized_link = self._normalize_title(link)
+
+        for title, path in title_map.items():
+            if self._normalize_title(title) == normalized_link:
+                logger.debug(f"Fuzzy matched: {link} → {path}")
+                return path
 
         return None
 

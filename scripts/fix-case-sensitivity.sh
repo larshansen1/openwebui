@@ -4,7 +4,35 @@
 
 set -e
 
-VAULT_PATH="${1:-/vault}"
+# Try to auto-detect vault path
+if [ -z "$1" ]; then
+    if [ -d "/vault" ]; then
+        VAULT_PATH="/vault"
+    elif [ -d "../syncthing/vault" ]; then
+        VAULT_PATH="../syncthing/vault"
+    elif [ -d "~/docker/syncthing/vault" ]; then
+        VAULT_PATH="~/docker/syncthing/vault"
+    else
+        echo "❌ Could not auto-detect vault path"
+        echo "Usage: $0 <path-to-vault>"
+        echo "Example: $0 ~/docker/syncthing/vault"
+        exit 1
+    fi
+else
+    VAULT_PATH="$1"
+fi
+
+# Expand tilde
+VAULT_PATH="${VAULT_PATH/#\~/$HOME}"
+
+# Check if path exists
+if [ ! -d "$VAULT_PATH" ]; then
+    echo "❌ Vault path does not exist: $VAULT_PATH"
+    echo ""
+    echo "Please provide the correct path to your vault."
+    echo "Usage: $0 <path-to-vault>"
+    exit 1
+fi
 
 echo "🔍 Checking for case sensitivity issues in vault..."
 echo "Vault path: $VAULT_PATH"

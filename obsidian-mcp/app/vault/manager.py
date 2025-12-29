@@ -31,18 +31,33 @@ class VaultManager:
         """
         Normalize path to lowercase if configured (for cross-platform syncing)
 
+        Only lowercases directory components, preserves filename case for readability.
+        Example: "Tech/Projects/Meeting Notes.md" → "tech/projects/Meeting Notes.md"
+
         Args:
             path: Path to normalize
 
         Returns:
-            Normalized path (lowercase if setting enabled)
+            Normalized path with lowercase directories, original filename
         """
         if settings.normalize_paths_lowercase:
-            # Only normalize directory components, preserve final filename if desired
-            parts = Path(path).parts
-            # Lowercase all directory parts
-            normalized = "/".join(part.lower() for part in parts)
-            logger.debug(f"Normalized path: {path} → {normalized}")
+            path_obj = Path(path)
+
+            # Split into directory parts and filename
+            if len(path_obj.parts) > 1:
+                # Has directory components
+                directory_parts = path_obj.parts[:-1]  # All but last
+                filename = path_obj.parts[-1]  # Last part (filename)
+
+                # Lowercase only directory parts, preserve filename
+                normalized_dirs = "/".join(part.lower() for part in directory_parts)
+                normalized = f"{normalized_dirs}/{filename}"
+            else:
+                # No directory, just filename - preserve as-is
+                normalized = path
+
+            if normalized != path:
+                logger.debug(f"Normalized path: {path} → {normalized}")
             return normalized
         return path
 

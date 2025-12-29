@@ -49,6 +49,11 @@ class DeleteNoteRequest(BaseModel):
     file_path: str
 
 
+class AppendToNoteRequest(BaseModel):
+    file_path: str
+    content: str  # Required for append
+
+
 class SearchNotesRequest(BaseModel):
     query: str
     tags: Optional[List[str]] = None
@@ -107,7 +112,11 @@ async def create_note(request: CreateNoteRequest):
 
 @router.post("/update_note", dependencies=[Security(verify_api_key)])
 async def update_note(request: UpdateNoteRequest):
-    """Update an existing note"""
+    """Update note content or frontmatter (use append_to_note for adding content to end)
+
+    This tool is for replacing content or updating frontmatter.
+    To ADD content to the end of a note, use append_to_note instead.
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -123,6 +132,8 @@ async def update_note(request: UpdateNoteRequest):
             "success": True,
             "note": note
         }
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -147,6 +158,8 @@ async def move_note(request: MoveNoteRequest):
             "note": note,
             "message": f"Note moved: {request.old_path} → {note['path']}"
         }
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except FileExistsError as e:
@@ -169,6 +182,8 @@ async def delete_note(request: DeleteNoteRequest):
             "success": True,
             "message": f"Note deleted: {request.file_path}"
         }
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -176,14 +191,28 @@ async def delete_note(request: DeleteNoteRequest):
         raise HTTPException(status_code=500, detail="Failed to delete note")
 
 
-@router.post("/append_to_note", dependencies=[Security(verify_api_key)])
-async def append_to_note(request: UpdateNoteRequest):
-    """Append content to an existing note"""
+@router.post("/add_to_note", dependencies=[Security(verify_api_key)])
+async def add_to_note(request: AppendToNoteRequest):
+    """Add new content to the end of an existing note
+
+    Use this tool to add content to an existing note without replacing it.
+    The new content will be added after two newlines. This is the recommended method
+    for adding remarks, sections, or updates to notes.
+
+    Example usage:
+    - Adding a new section to a note
+    - Adding a remark or comment
+    - Adding follow-up information
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
-    if request.content is None:
-        raise HTTPException(status_code=400, detail="Content is required for append")
+    if not request.content or request.content.strip() == "":
+        raise HTTPException(status_code=400, detail="Content is required for append and cannot be empty")
+
+    # Debug logging to see what content is being received
+    logger.info(f"append_to_note called: path={request.file_path}, content_length={len(request.content)}")
+    logger.debug(f"Content preview: {request.content[:200]}...")
 
     try:
         note = vault_manager.update_note(
@@ -271,6 +300,9 @@ async def get_note_by_title(request: GetNoteByTitleRequest):
             "success": True,
             "note": note
         }
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is (don't convert to 500)
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
