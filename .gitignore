@@ -23,6 +23,9 @@ Thumbs.db
 # MCP generated config (contains secrets - template only should be in git)
 mcp_config/config.json
 
+# Obsidian MCP test vault (development only)
+obsidian-mcp/test-vault/
+
 # Backup files
 *.bak
 *~

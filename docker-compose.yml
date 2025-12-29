@@ -105,10 +105,10 @@ services:
       MCP_API_KEY: ${MCP_API_KEY}
       OBSIDIAN_VAULT_PATH: /vault  # Container path (volume mount destination)
     volumes:
-      # Dev environment: mount local vault directory
+      # Dev environment: mount local vault directory (writable for CRUD operations)
       # Prod environment: use syncthing-data volume (comment out dev, uncomment prod)
-      - ${OBSIDIAN_VAULT_PATH}:/vault:ro  # Dev: direct mount
-      # - syncthing-data:/vault:ro         # Prod: syncthing volume
+      - ${OBSIDIAN_VAULT_PATH}:/vault  # Dev: direct mount (writable)
+      # - syncthing-data:/vault         # Prod: syncthing volume (add :ro for read-only)
       - ./obsidian-mcp/obsidian-mcp-entrypoint.sh:/app/obsidian-mcp-entrypoint.sh:ro
     ports:
       - "127.0.0.1:8001:8000"
@@ -145,6 +145,10 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      obsidian-mcp:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
     environment:
       # Database Configuration
       DATABASE_URL: postgresql://openwebui:${POSTGRES_PASSWORD}@postgres:5432/openwebui
