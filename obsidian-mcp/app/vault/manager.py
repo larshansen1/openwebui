@@ -291,6 +291,7 @@ class VaultManager:
         # Invalidate caches
         self.cache.invalidate_pattern("list:")
         self.parser.invalidate_title_map()
+        self.parser.invalidate_backlinks()
 
         return self.read_note(path)
 
@@ -353,6 +354,7 @@ class VaultManager:
         self.cache.delete(f"note:{path}")
         self.cache.invalidate_pattern("list:")
         self.cache.invalidate_pattern("search:")
+        self.parser.invalidate_backlinks()
 
         return self.read_note(path)
 
@@ -401,6 +403,7 @@ class VaultManager:
         self.cache.delete(f"note:{new_path_normalized}")
         self.cache.invalidate_pattern("list:")
         self.parser.invalidate_title_map()
+        self.parser.invalidate_backlinks()
 
         return self.read_note(new_path_normalized)
 
@@ -430,6 +433,7 @@ class VaultManager:
         self.cache.delete(f"note:{path}")
         self.cache.invalidate_pattern("list:")
         self.parser.invalidate_title_map()
+        self.parser.invalidate_backlinks()
 
         return True
 
@@ -620,6 +624,184 @@ class VaultManager:
 
             return self.create_note(daily_note_path, content, frontmatter)
 
+    def get_backlinks(self, title: str) -> Dict[str, Any]:
+        """
+        Get all backlinks to a note (notes that reference this note)
+
+        Args:
+            title: Note title to find backlinks for
+
+        Returns:
+            Dict with note info and list of backlinks
+
+        Raises:
+            FileNotFoundError: If note not found
+        """
+        # Resolve title to file path
+        match_result = self.parser.resolve_wiki_link_with_score(title)
+
+        if not match_result:
+            raise FileNotFoundError(f"Note not found: {title}")
+
+        path = match_result["path"]
+
+        # Get backlinks from parser
+        backlinks = self.parser.get_backlinks(path)
+
+        return {
+            "note_path": path,
+            "note_name": Path(path).stem,
+            "backlinks": backlinks,
+            "backlink_count": len(backlinks)
+        }
+
+    def get_orphan_notes(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get notes with no backlinks (orphaned notes)
+
+        Args:
+            limit: Maximum results
+
+        Returns:
+            List of orphaned note information
+        """
+        # Build backlinks index
+        backlinks_index = self.parser.build_backlinks_index()
+
+        orphans = []
+
+        # Find all markdown files
+        for md_file in self.vault_path.rglob("*.md"):
+            try:
+                rel_path = str(md_file.relative_to(self.vault_path))
+
+                # Check if this note has any backlinks
+                if rel_path not in backlinks_index or len(backlinks_index[rel_path]) == 0:
+                    stat = md_file.stat()
+
+                    orphans.append({
+                        "path": rel_path,
+                        "name": md_file.stem,
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    })
+
+                if len(orphans) >= limit:
+                    break
+
+            except Exception as e:
+                logger.warning(f"Error processing file for orphans: {e}")
+                continue
+
+        # Sort by modified date (most recent first)
+        orphans.sort(key=lambda x: x["modified"], reverse=True)
+
+        return orphans
+
+    def get_note_graph(
+        self,
+        center_note: Optional[str] = None,
+        depth: int = 1,
+        max_nodes: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get knowledge graph of notes and their connections
+
+        Args:
+            center_note: Optional note title to center the graph around
+            depth: How many levels of connections to include (1-3)
+            max_nodes: Maximum nodes to include
+
+        Returns:
+            Dict with nodes and edges for graph visualization
+        """
+        backlinks_index = self.parser.build_backlinks_index()
+        title_map = self.parser.build_title_map()
+
+        nodes = []
+        edges = []
+        visited = set()
+
+        def add_note_to_graph(path: str, current_depth: int = 0):
+            """Recursively add note and its connections to graph"""
+            if path in visited or len(nodes) >= max_nodes or current_depth > depth:
+                return
+
+            visited.add(path)
+
+            # Get note info
+            try:
+                full_path = self._get_safe_path(path)
+                stat = full_path.stat()
+                content = full_path.read_text(encoding='utf-8')
+                metadata, body = self.parser.parse_note(content)
+
+                # Count forward and backlinks
+                forward_links = self.parser.extract_wiki_links(body)
+                backlink_count = len(backlinks_index.get(path, []))
+
+                nodes.append({
+                    "id": path,
+                    "name": Path(path).stem,
+                    "forward_link_count": len(forward_links),
+                    "backlink_count": backlink_count,
+                    "tags": self.parser.extract_tags(metadata, body),
+                    "size": stat.st_size
+                })
+
+                # Add edges for forward links
+                if current_depth < depth:
+                    for link in forward_links:
+                        target_path = self.parser.resolve_wiki_link(link)
+                        if target_path:
+                            edges.append({
+                                "from": path,
+                                "to": target_path,
+                                "type": "forward"
+                            })
+                            # Recursively add linked notes
+                            add_note_to_graph(target_path, current_depth + 1)
+
+                    # Add edges for backlinks
+                    for source_path, _ in backlinks_index.get(path, []):
+                        if source_path not in visited:
+                            edges.append({
+                                "from": source_path,
+                                "to": path,
+                                "type": "backlink"
+                            })
+                            # Recursively add backlink sources
+                            add_note_to_graph(source_path, current_depth + 1)
+
+            except Exception as e:
+                logger.warning(f"Error adding {path} to graph: {e}")
+
+        # Start from center note or find most connected notes
+        if center_note:
+            match_result = self.parser.resolve_wiki_link_with_score(center_note)
+            if match_result:
+                add_note_to_graph(match_result["path"], 0)
+        else:
+            # Find most connected notes (by backlink count)
+            most_connected = sorted(
+                backlinks_index.items(),
+                key=lambda x: len(x[1]),
+                reverse=True
+            )[:10]
+
+            for path, _ in most_connected:
+                if len(nodes) >= max_nodes:
+                    break
+                add_note_to_graph(path, 0)
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "center_note": center_note
+        }
+
     def get_vault_stats(self) -> Dict[str, Any]:
         """
         Get vault statistics
@@ -652,4 +834,5 @@ class VaultManager:
         self.cache.invalidate_pattern("list:")
         self.cache.invalidate_pattern("search:")
         self.parser.invalidate_title_map()
+        self.parser.invalidate_backlinks()
         logger.debug(f"Cache invalidated for: {path or 'all'}")

@@ -177,6 +177,39 @@ class ObsidianMCPServer:
                             "date": {"type": "string", "description": "Date in YYYY-MM-DD format (omit for today)"}
                         }
                     }
+                ),
+                Tool(
+                    name="get_backlinks",
+                    description="Get all notes that link to (reference) a specific note - enables bidirectional navigation",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Note title to find backlinks for"}
+                        },
+                        "required": ["title"]
+                    }
+                ),
+                Tool(
+                    name="get_orphan_notes",
+                    description="Find notes with no backlinks (orphaned/isolated notes that no other notes reference)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "description": "Maximum results", "default": 100}
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_note_graph",
+                    description="Get a knowledge graph of notes and their connections (forward links and backlinks)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "center_note": {"type": "string", "description": "Optional note to center the graph around"},
+                            "depth": {"type": "integer", "description": "Connection depth to traverse (1-3)", "default": 1, "minimum": 1, "maximum": 3},
+                            "max_nodes": {"type": "integer", "description": "Maximum nodes to include", "default": 50}
+                        }
+                    }
                 )
             ]
 
@@ -208,6 +241,12 @@ class ObsidianMCPServer:
                     return await self._get_note_metadata(arguments)
                 elif name == "get_daily_note":
                     return await self._get_daily_note(arguments)
+                elif name == "get_backlinks":
+                    return await self._get_backlinks(arguments)
+                elif name == "get_orphan_notes":
+                    return await self._get_orphan_notes(arguments)
+                elif name == "get_note_graph":
+                    return await self._get_note_graph(arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             except Exception as e:
@@ -445,6 +484,97 @@ class ObsidianMCPServer:
             return [TextContent(type="text", text=output)]
         except ValueError as e:
             return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+    async def _get_backlinks(self, args: dict) -> list[TextContent]:
+        """Get backlinks tool implementation"""
+        title = args["title"]
+
+        try:
+            result = self.vault.get_backlinks(title)
+
+            if result["backlink_count"] == 0:
+                output = f"# Backlinks for: {result['note_name']}\n\n"
+                output += "No backlinks found. This note is not referenced by any other notes."
+            else:
+                output = f"# Backlinks for: {result['note_name']}\n\n"
+                output += f"**Path:** {result['note_path']}\n"
+                output += f"**Referenced by {result['backlink_count']} note(s):**\n\n"
+
+                for backlink in result["backlinks"]:
+                    output += f"### {backlink['source_name']}\n"
+                    output += f"- **Path:** {backlink['source_path']}\n"
+                    output += f"- **Context:** {backlink['context']}\n\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError:
+            return [TextContent(type="text", text=f"Note not found: {title}")]
+
+    async def _get_orphan_notes(self, args: dict) -> list[TextContent]:
+        """Get orphan notes tool implementation"""
+        limit = args.get("limit", 100)
+
+        orphans = self.vault.get_orphan_notes(limit)
+
+        if not orphans:
+            return [TextContent(type="text", text="No orphan notes found. All notes are referenced!")]
+
+        output = f"# Orphan Notes ({len(orphans)} found)\n\n"
+        output += "Notes with no backlinks (not referenced by any other notes):\n\n"
+
+        for orphan in orphans:
+            output += f"- **{orphan['name']}** ({orphan['path']})\n"
+            output += f"  - Size: {orphan['size']} bytes\n"
+            output += f"  - Modified: {orphan['modified']}\n\n"
+
+        return [TextContent(type="text", text=output)]
+
+    async def _get_note_graph(self, args: dict) -> list[TextContent]:
+        """Get note graph tool implementation"""
+        center_note = args.get("center_note")
+        depth = args.get("depth", 1)
+        max_nodes = args.get("max_nodes", 50)
+
+        try:
+            graph = self.vault.get_note_graph(center_note, depth, max_nodes)
+
+            output = f"# Knowledge Graph\n\n"
+
+            if graph["center_note"]:
+                output += f"**Centered on:** {graph['center_note']}\n"
+
+            output += f"**Depth:** {depth} level(s)\n"
+            output += f"**Nodes:** {graph['node_count']}\n"
+            output += f"**Edges:** {graph['edge_count']}\n\n"
+
+            # Show top connected nodes
+            sorted_nodes = sorted(
+                graph["nodes"],
+                key=lambda n: n["backlink_count"] + n["forward_link_count"],
+                reverse=True
+            )[:10]
+
+            output += "## Most Connected Notes\n\n"
+            for node in sorted_nodes:
+                output += f"### {node['name']}\n"
+                output += f"- **Path:** {node['id']}\n"
+                output += f"- **Forward links:** {node['forward_link_count']}\n"
+                output += f"- **Backlinks:** {node['backlink_count']}\n"
+                output += f"- **Tags:** {', '.join(node['tags']) if node['tags'] else 'None'}\n\n"
+
+            # Show connections
+            if graph["edges"]:
+                output += f"## Connections ({len(graph['edges'])} edges)\n\n"
+                for edge in graph["edges"][:20]:  # Limit to first 20
+                    from_name = next((n["name"] for n in graph["nodes"] if n["id"] == edge["from"]), edge["from"])
+                    to_name = next((n["name"] for n in graph["nodes"] if n["id"] == edge["to"]), edge["to"])
+                    output += f"- {from_name} → {to_name} ({edge['type']})\n"
+
+                if len(graph["edges"]) > 20:
+                    output += f"\n... and {len(graph['edges']) - 20} more connections\n"
+
+            return [TextContent(type="text", text=output)]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error generating graph: {str(e)}")]
 
     def get_app(self) -> Server:
         """Get MCP server application"""

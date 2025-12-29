@@ -28,6 +28,8 @@ class MarkdownParser:
         self.vault_path = vault_path
         # Cache for note title to path mapping
         self._title_map: Optional[Dict[str, str]] = None
+        # Cache for backlinks index: {target_path: [(source_path, context_snippet), ...]}
+        self._backlinks_index: Optional[Dict[str, List[Tuple[str, str]]]] = None
 
     def parse_note(self, content: str) -> Tuple[Dict[str, Any], str]:
         """
@@ -232,6 +234,120 @@ class MarkdownParser:
     def invalidate_title_map(self):
         """Invalidate title map cache (call when files change)"""
         self._title_map = None
+
+    def build_backlinks_index(self) -> Dict[str, List[Tuple[str, str]]]:
+        """
+        Build reverse index of backlinks: which notes link to each note
+
+        Returns:
+            Dict mapping target path to list of (source_path, context_snippet) tuples
+        """
+        if self._backlinks_index is not None:
+            return self._backlinks_index
+
+        backlinks: Dict[str, List[Tuple[str, str]]] = {}
+
+        # Walk through all markdown files
+        for md_file in self.vault_path.rglob("*.md"):
+            try:
+                source_path = str(md_file.relative_to(self.vault_path))
+                content = md_file.read_text(encoding='utf-8')
+
+                # Parse to get body (skip frontmatter)
+                _, body = self.parse_note(content)
+
+                # Extract wiki-links from this note
+                links = self.extract_wiki_links(body)
+
+                # For each link, resolve it and add to backlinks
+                for link in links:
+                    # Resolve the link to actual file path
+                    target_path = self.resolve_wiki_link(link)
+
+                    if target_path:
+                        # Extract context around the link
+                        context = self._extract_link_context(body, link)
+
+                        # Add to backlinks index
+                        if target_path not in backlinks:
+                            backlinks[target_path] = []
+
+                        backlinks[target_path].append((source_path, context))
+
+            except Exception as e:
+                logger.debug(f"Error processing {md_file} for backlinks: {e}")
+                continue
+
+        self._backlinks_index = backlinks
+        logger.info(f"Built backlinks index with {len(backlinks)} targets")
+        return backlinks
+
+    def _extract_link_context(self, content: str, link: str, max_length: int = 150) -> str:
+        """
+        Extract context around a wiki-link in content
+
+        Args:
+            content: Full note content
+            link: Wiki-link target
+            max_length: Maximum context length
+
+        Returns:
+            Context snippet around the link
+        """
+        # Find the link in content
+        pattern = rf'\[\[{re.escape(link)}(?:\|[^\]]+)?\]\]'
+        match = re.search(pattern, content)
+
+        if not match:
+            return f"[[{link}]]"
+
+        # Get position of the link
+        link_pos = match.start()
+
+        # Extract surrounding context
+        start = max(0, link_pos - max_length // 2)
+        end = min(len(content), link_pos + max_length // 2)
+
+        context = content[start:end].strip()
+
+        # Clean up - remove newlines and extra spaces
+        context = ' '.join(context.split())
+
+        # Add ellipsis if truncated
+        if start > 0:
+            context = "..." + context
+        if end < len(content):
+            context = context + "..."
+
+        return context
+
+    def get_backlinks(self, path: str) -> List[Dict[str, str]]:
+        """
+        Get all backlinks to a specific note
+
+        Args:
+            path: Relative path to the note
+
+        Returns:
+            List of dicts with source_path and context for each backlink
+        """
+        backlinks_index = self.build_backlinks_index()
+
+        backlinks_raw = backlinks_index.get(path, [])
+
+        # Convert to list of dicts for better API
+        return [
+            {
+                "source_path": source_path,
+                "source_name": Path(source_path).stem,
+                "context": context
+            }
+            for source_path, context in backlinks_raw
+        ]
+
+    def invalidate_backlinks(self):
+        """Invalidate backlinks cache (call when files change)"""
+        self._backlinks_index = None
 
     def format_content_with_frontmatter(
         self,

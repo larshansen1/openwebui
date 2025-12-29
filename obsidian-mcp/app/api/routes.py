@@ -86,6 +86,20 @@ class GetDailyNoteRequest(BaseModel):
     date: Optional[str] = None
 
 
+class GetBacklinksRequest(BaseModel):
+    title: str
+
+
+class GetOrphanNotesRequest(BaseModel):
+    limit: int = 100
+
+
+class GetNoteGraphRequest(BaseModel):
+    center_note: Optional[str] = None
+    depth: int = 1
+    max_nodes: int = 50
+
+
 # Create router
 router = APIRouter(prefix="/tools", tags=["Obsidian Tools"])
 
@@ -386,6 +400,67 @@ async def get_daily_note(request: GetDailyNoteRequest):
     except Exception as e:
         logger.error(f"Error getting daily note", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get daily note")
+
+
+@router.post("/get_backlinks", dependencies=[Security(verify_api_key)])
+async def get_backlinks(request: GetBacklinksRequest):
+    """Get all notes that link to (reference) a specific note"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.get_backlinks(request.title)
+
+        return {
+            "success": True,
+            "backlinks": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting backlinks", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get backlinks")
+
+
+@router.post("/get_orphan_notes", dependencies=[Security(verify_api_key)])
+async def get_orphan_notes(request: GetOrphanNotesRequest):
+    """Find notes with no backlinks (orphaned/isolated notes)"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        orphans = vault_manager.get_orphan_notes(request.limit)
+
+        return {
+            "success": True,
+            "orphans": orphans,
+            "count": len(orphans)
+        }
+    except Exception as e:
+        logger.error(f"Error getting orphan notes", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get orphan notes")
+
+
+@router.post("/get_note_graph", dependencies=[Security(verify_api_key)])
+async def get_note_graph(request: GetNoteGraphRequest):
+    """Get a knowledge graph of notes and their connections"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        graph = vault_manager.get_note_graph(
+            center_note=request.center_note,
+            depth=request.depth,
+            max_nodes=request.max_nodes
+        )
+
+        return {
+            "success": True,
+            "graph": graph
+        }
+    except Exception as e:
+        logger.error(f"Error getting note graph", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get note graph")
 
 
 @router.get("/list_tags", dependencies=[Security(verify_api_key)])
