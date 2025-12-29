@@ -1,0 +1,307 @@
+"""
+REST API routes for Obsidian vault operations
+Exposes MCP tools as HTTP endpoints for Open WebUI integration
+"""
+import logging
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+import secrets
+
+from app.config import settings
+from app.vault.manager import VaultManager
+
+logger = logging.getLogger(__name__)
+security = HTTPBearer()
+
+# Global vault manager (will be set by main.py)
+vault_manager: Optional[VaultManager] = None
+
+
+def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+    """Verify API key from Bearer token (constant-time comparison)"""
+    if not secrets.compare_digest(credentials.credentials, settings.mcp_api_key):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return credentials.credentials
+
+
+# Request/Response models
+class CreateNoteRequest(BaseModel):
+    title: str
+    content: str
+    tags: Optional[List[str]] = None
+
+
+class UpdateNoteRequest(BaseModel):
+    file_path: str
+    content: Optional[str] = None
+    frontmatter: Optional[Dict[str, Any]] = None
+    append: bool = False
+
+
+class DeleteNoteRequest(BaseModel):
+    file_path: str
+
+
+class SearchNotesRequest(BaseModel):
+    query: str
+    tags: Optional[List[str]] = None
+    limit: int = 50
+
+
+class ListNotesRequest(BaseModel):
+    directory: str = ""
+    recursive: bool = True
+    include_frontmatter: bool = False
+    limit: int = 100
+    offset: int = 0
+
+
+class GetNoteByTitleRequest(BaseModel):
+    title: str
+
+
+class ResolveWikiLinkRequest(BaseModel):
+    link_name: str
+
+
+# Create router
+router = APIRouter(prefix="/tools", tags=["Obsidian Tools"])
+
+
+@router.post("/create_note", dependencies=[Security(verify_api_key)])
+async def create_note(request: CreateNoteRequest):
+    """Create a new note in the vault"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        # Build frontmatter
+        frontmatter = {"title": request.title}
+        if request.tags:
+            frontmatter["tags"] = request.tags
+
+        # Create note (title will be used as filename)
+        note = vault_manager.create_note(
+            path=f"{request.title}.md",
+            content=request.content,
+            frontmatter=frontmatter
+        )
+
+        return {
+            "success": True,
+            "note": note
+        }
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create note")
+
+
+@router.post("/update_note", dependencies=[Security(verify_api_key)])
+async def update_note(request: UpdateNoteRequest):
+    """Update an existing note"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        note = vault_manager.update_note(
+            path=request.file_path,
+            content=request.content,
+            frontmatter=request.frontmatter,
+            append=request.append
+        )
+
+        return {
+            "success": True,
+            "note": note
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update note")
+
+
+@router.post("/delete_note", dependencies=[Security(verify_api_key)])
+async def delete_note(request: DeleteNoteRequest):
+    """Delete a note"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        vault_manager.delete_note(path=request.file_path)
+
+        return {
+            "success": True,
+            "message": f"Note deleted: {request.file_path}"
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete note")
+
+
+@router.post("/append_to_note", dependencies=[Security(verify_api_key)])
+async def append_to_note(request: UpdateNoteRequest):
+    """Append content to an existing note"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    if request.content is None:
+        raise HTTPException(status_code=400, detail="Content is required for append")
+
+    try:
+        note = vault_manager.update_note(
+            path=request.file_path,
+            content=request.content,
+            append=True
+        )
+
+        return {
+            "success": True,
+            "note": note
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error appending to note", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to append to note")
+
+
+@router.post("/search_notes", dependencies=[Security(verify_api_key)])
+async def search_notes(request: SearchNotesRequest):
+    """Search notes by content and tags"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        results = vault_manager.search_notes(
+            query=request.query,
+            tags=request.tags,
+            limit=request.limit
+        )
+
+        return {
+            "success": True,
+            "results": results,
+            "count": len(results)
+        }
+    except Exception as e:
+        logger.error(f"Error searching notes", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to search notes")
+
+
+@router.post("/list_notes", dependencies=[Security(verify_api_key)])
+async def list_notes(request: ListNotesRequest):
+    """List all notes in the vault"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        notes = vault_manager.list_notes(
+            directory=request.directory,
+            recursive=request.recursive,
+            include_frontmatter=request.include_frontmatter,
+            limit=request.limit,
+            offset=request.offset
+        )
+
+        return {
+            "success": True,
+            "notes": notes,
+            "count": len(notes)
+        }
+    except Exception as e:
+        logger.error(f"Error listing notes", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list notes")
+
+
+@router.post("/get_note_by_title", dependencies=[Security(verify_api_key)])
+async def get_note_by_title(request: GetNoteByTitleRequest):
+    """Get a note by its title"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        # Resolve title to file path
+        file_path = vault_manager.parser.resolve_wiki_link(request.title)
+
+        if not file_path:
+            raise HTTPException(status_code=404, detail=f"Note not found: {request.title}")
+
+        # Read the note
+        note = vault_manager.read_note(file_path)
+
+        return {
+            "success": True,
+            "note": note
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting note by title", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get note")
+
+
+@router.post("/resolve_wiki_link", dependencies=[Security(verify_api_key)])
+async def resolve_wiki_link(request: ResolveWikiLinkRequest):
+    """Resolve a wiki-link to a file path"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        file_path = vault_manager.parser.resolve_wiki_link(request.link_name)
+
+        if not file_path:
+            return {
+                "success": False,
+                "message": f"Wiki link not found: {request.link_name}",
+                "file_path": None
+            }
+
+        return {
+            "success": True,
+            "file_path": file_path,
+            "link_name": request.link_name
+        }
+    except Exception as e:
+        logger.error(f"Error resolving wiki link", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to resolve wiki link")
+
+
+@router.get("/list_tags", dependencies=[Security(verify_api_key)])
+async def list_tags():
+    """List all tags in the vault with usage counts"""
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        # Collect all tags from all notes
+        tag_counts: Dict[str, int] = {}
+
+        for md_file in vault_manager.vault_path.rglob("*.md"):
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                metadata, body = vault_manager.parser.parse_note(content)
+                tags = vault_manager.parser.extract_tags(metadata, body)
+
+                for tag in tags:
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            except Exception:
+                continue
+
+        # Sort by usage count (descending)
+        sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
+
+        return {
+            "success": True,
+            "tags": [{"tag": tag, "count": count} for tag, count in sorted_tags],
+            "total_unique_tags": len(sorted_tags)
+        }
+    except Exception as e:
+        logger.error(f"Error listing tags", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list tags")

@@ -17,6 +17,7 @@ from app.config import settings
 from app.vault.manager import VaultManager
 from app.vault.watcher import FileWatcher
 from app.mcp.server import ObsidianMCPServer
+from app.api import routes as api_routes
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +56,9 @@ async def lifespan(app: FastAPI):
     vault_manager = VaultManager()
     logger.info("✅ Vault manager initialized")
 
+    # Set vault manager for API routes
+    api_routes.vault_manager = vault_manager
+
     # Start file watcher
     file_watcher = FileWatcher(
         vault_path=settings.vault_path,
@@ -90,6 +94,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Include API routes
+app.include_router(api_routes.router)
 
 
 @app.get("/health")
