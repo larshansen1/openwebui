@@ -836,3 +836,193 @@ class VaultManager:
         self.parser.invalidate_title_map()
         self.parser.invalidate_backlinks()
         logger.debug(f"Cache invalidated for: {path or 'all'}")
+
+    # Structure parsing methods (Section/Block operations)
+
+    def get_table_of_contents(self, path: str, max_depth: int = 6) -> Dict[str, Any]:
+        """
+        Get table of contents from a note
+
+        Args:
+            path: Relative path to note
+            max_depth: Maximum heading depth to include (1-6)
+
+        Returns:
+            Dict with TOC and metadata
+
+        Raises:
+            FileNotFoundError: If note doesn't exist
+        """
+        # Get cached structure or parse
+        cache_key = f"structure:{path}"
+        cached = self.cache.get(cache_key)
+
+        if cached:
+            structure = cached
+        else:
+            full_path = self._get_safe_path(path)
+            if not full_path.exists():
+                raise FileNotFoundError(f"Note not found: {path}")
+
+            content = full_path.read_text(encoding='utf-8')
+            structure = self.parser.parse_structure(content)
+
+            # Cache structure for 5 minutes
+            self.cache.set(cache_key, structure, ttl=300)
+
+        # Filter TOC by max_depth
+        toc = [entry for entry in structure.toc if entry['level'] <= max_depth]
+
+        return {
+            "path": path,
+            "toc": toc,
+            "heading_count": len(structure.headings),
+            "word_count": structure.word_count,
+            "reading_time_minutes": structure.reading_time_minutes
+        }
+
+    def read_section(self, path: str, section_ref: str) -> Dict[str, Any]:
+        """
+        Read specific section from a note by heading reference
+
+        Args:
+            path: Relative path to note
+            section_ref: Section reference (heading text or anchor)
+
+        Returns:
+            Dict with section content and metadata
+
+        Raises:
+            FileNotFoundError: If note doesn't exist
+            ValueError: If section not found
+        """
+        full_path = self._get_safe_path(path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"Note not found: {path}")
+
+        content = full_path.read_text(encoding='utf-8')
+        section_content = self.parser.extract_section(content, section_ref)
+
+        if section_content is None:
+            raise ValueError(f"Section not found: {section_ref}")
+
+        # Parse the section to get heading info
+        lines = section_content.split('\n')
+        heading_line = lines[0] if lines else ""
+        heading_match = re.match(r'^(#{1,6})\s+(.+)', heading_line)
+
+        heading_level = len(heading_match.group(1)) if heading_match else 0
+        heading_text = heading_match.group(2) if heading_match else section_ref
+
+        return {
+            "path": path,
+            "section_ref": section_ref,
+            "heading_level": heading_level,
+            "heading_text": heading_text,
+            "content": section_content
+        }
+
+    def read_block(self, path: str, block_id: str) -> Dict[str, Any]:
+        """
+        Read specific block from a note by block ID
+
+        Args:
+            path: Relative path to note
+            block_id: Block ID (without ^ prefix)
+
+        Returns:
+            Dict with block content and metadata
+
+        Raises:
+            FileNotFoundError: If note doesn't exist
+            ValueError: If block not found
+        """
+        full_path = self._get_safe_path(path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"Note not found: {path}")
+
+        content = full_path.read_text(encoding='utf-8')
+        block_content = self.parser.extract_block(content, block_id)
+
+        if block_content is None:
+            raise ValueError(f"Block not found: ^{block_id}")
+
+        return {
+            "path": path,
+            "block_id": block_id,
+            "content": block_content
+        }
+
+    def update_section(self, path: str, section_ref: str, new_content: str) -> Dict[str, Any]:
+        """
+        Update specific section in a note
+
+        Args:
+            path: Relative path to note
+            section_ref: Section reference (heading text or anchor)
+            new_content: New content for section (without heading line)
+
+        Returns:
+            Updated note data
+
+        Raises:
+            FileNotFoundError: If note doesn't exist
+            ValueError: If section not found
+        """
+        full_path = self._get_safe_path(path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"Note not found: {path}")
+
+        content = full_path.read_text(encoding='utf-8')
+
+        # Update section
+        updated_content = self.parser.update_section(content, section_ref, new_content)
+
+        # Write updated content
+        full_path.write_text(updated_content, encoding='utf-8')
+
+        # Invalidate caches
+        self.cache.delete(f"note:{path}")
+        self.cache.delete(f"structure:{path}")
+        self.cache.invalidate_pattern("search:")
+
+        logger.info(f"Updated section '{section_ref}' in {path}")
+
+        return self.read_note(path)
+
+    def update_block(self, path: str, block_id: str, new_content: str) -> Dict[str, Any]:
+        """
+        Update specific block in a note
+
+        Args:
+            path: Relative path to note
+            block_id: Block ID (without ^ prefix)
+            new_content: New content for block
+
+        Returns:
+            Updated note data
+
+        Raises:
+            FileNotFoundError: If note doesn't exist
+            ValueError: If block not found
+        """
+        full_path = self._get_safe_path(path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"Note not found: {path}")
+
+        content = full_path.read_text(encoding='utf-8')
+
+        # Update block
+        updated_content = self.parser.update_block(content, block_id, new_content)
+
+        # Write updated content
+        full_path.write_text(updated_content, encoding='utf-8')
+
+        # Invalidate caches
+        self.cache.delete(f"note:{path}")
+        self.cache.delete(f"structure:{path}")
+        self.cache.invalidate_pattern("search:")
+
+        logger.info(f"Updated block ^{block_id} in {path}")
+
+        return self.read_note(path)

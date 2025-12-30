@@ -9,6 +9,8 @@ from pathlib import Path
 from difflib import SequenceMatcher
 import frontmatter
 
+from app.vault.structure import StructureParser, DocumentStructure
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +32,8 @@ class MarkdownParser:
         self._title_map: Optional[Dict[str, str]] = None
         # Cache for backlinks index: {target_path: [(source_path, context_snippet), ...]}
         self._backlinks_index: Optional[Dict[str, List[Tuple[str, str]]]] = None
+        # Structure parser for markdown parsing
+        self.structure_parser = StructureParser()
 
     def parse_note(self, content: str) -> Tuple[Dict[str, Any], str]:
         """
@@ -397,3 +401,77 @@ class MarkdownParser:
         tags.update(inline_tags)
 
         return sorted(list(tags))
+
+    # Structure parsing methods (delegate to StructureParser)
+
+    def parse_structure(self, content: str) -> DocumentStructure:
+        """
+        Parse complete document structure
+
+        Args:
+            content: Markdown content to parse
+
+        Returns:
+            DocumentStructure with headings, blocks, TOC, and metadata
+        """
+        return self.structure_parser.parse_structure(content)
+
+    def extract_section(self, content: str, section_ref: str) -> Optional[str]:
+        """
+        Extract section by heading reference (#section)
+
+        Args:
+            content: Full markdown content
+            section_ref: Section reference (heading text or anchor)
+
+        Returns:
+            Section content if found, None otherwise
+        """
+        return self.structure_parser.extract_section(content, section_ref)
+
+    def extract_block(self, content: str, block_id: str) -> Optional[str]:
+        """
+        Extract block by block reference (^block-id)
+
+        Args:
+            content: Full markdown content
+            block_id: Block ID (without ^ prefix)
+
+        Returns:
+            Block content if found, None otherwise
+        """
+        return self.structure_parser.extract_block(content, block_id)
+
+    def update_section(self, content: str, section_ref: str, new_content: str) -> str:
+        """
+        Update specific section content
+
+        Args:
+            content: Full markdown content
+            section_ref: Section reference (heading text or anchor)
+            new_content: New content for section (without heading line)
+
+        Returns:
+            Updated markdown content
+
+        Raises:
+            ValueError: If section not found
+        """
+        return self.structure_parser.update_section(content, section_ref, new_content)
+
+    def update_block(self, content: str, block_id: str, new_content: str) -> str:
+        """
+        Update specific block content
+
+        Args:
+            content: Full markdown content
+            block_id: Block ID (without ^ prefix)
+            new_content: New block content
+
+        Returns:
+            Updated markdown content
+
+        Raises:
+            ValueError: If block not found
+        """
+        return self.structure_parser.update_block(content, block_id, new_content)

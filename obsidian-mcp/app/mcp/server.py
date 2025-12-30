@@ -210,6 +210,69 @@ class ObsidianMCPServer:
                             "max_nodes": {"type": "integer", "description": "Maximum nodes to include", "default": 50}
                         }
                     }
+                ),
+                # Section/Block Operations
+                Tool(
+                    name="get_table_of_contents",
+                    description="Get hierarchical table of contents from a note with headings and structure",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Relative path to the note"},
+                            "max_depth": {"type": "integer", "description": "Maximum heading depth to include (1-6)", "default": 6, "minimum": 1, "maximum": 6}
+                        },
+                        "required": ["path"]
+                    }
+                ),
+                Tool(
+                    name="read_section",
+                    description="Read a specific section from a note by heading reference",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Relative path to the note"},
+                            "section": {"type": "string", "description": "Section reference (heading text or anchor)"}
+                        },
+                        "required": ["path", "section"]
+                    }
+                ),
+                Tool(
+                    name="read_block",
+                    description="Read a specific block from a note by block ID (^block-id)",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Relative path to the note"},
+                            "block_id": {"type": "string", "description": "Block ID (without ^ prefix)"}
+                        },
+                        "required": ["path", "block_id"]
+                    }
+                ),
+                Tool(
+                    name="update_section",
+                    description="Update a specific section in a note by heading reference",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Relative path to the note"},
+                            "section": {"type": "string", "description": "Section reference (heading text or anchor)"},
+                            "content": {"type": "string", "description": "New content for the section (without heading line)"}
+                        },
+                        "required": ["path", "section", "content"]
+                    }
+                ),
+                Tool(
+                    name="update_block",
+                    description="Update a specific block in a note by block ID",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Relative path to the note"},
+                            "block_id": {"type": "string", "description": "Block ID (without ^ prefix)"},
+                            "content": {"type": "string", "description": "New content for the block"}
+                        },
+                        "required": ["path", "block_id", "content"]
+                    }
                 )
             ]
 
@@ -247,6 +310,16 @@ class ObsidianMCPServer:
                     return await self._get_orphan_notes(arguments)
                 elif name == "get_note_graph":
                     return await self._get_note_graph(arguments)
+                elif name == "get_table_of_contents":
+                    return await self._get_table_of_contents(arguments)
+                elif name == "read_section":
+                    return await self._read_section(arguments)
+                elif name == "read_block":
+                    return await self._read_block(arguments)
+                elif name == "update_section":
+                    return await self._update_section(arguments)
+                elif name == "update_block":
+                    return await self._update_block(arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             except Exception as e:
@@ -575,6 +648,126 @@ class ObsidianMCPServer:
             return [TextContent(type="text", text=output)]
         except Exception as e:
             return [TextContent(type="text", text=f"Error generating graph: {str(e)}")]
+
+    # Section/Block operation handlers
+
+    async def _get_table_of_contents(self, args: dict) -> list[TextContent]:
+        """Get table of contents tool implementation"""
+        path = args["path"]
+        max_depth = args.get("max_depth", 6)
+
+        try:
+            result = self.vault.get_table_of_contents(path, max_depth)
+
+            output = f"# Table of Contents: {path}\n\n"
+            output += f"**Headings:** {result['heading_count']}\n"
+            output += f"**Word Count:** {result['word_count']}\n"
+            output += f"**Reading Time:** {result['reading_time_minutes']} minutes\n\n"
+
+            if not result['toc']:
+                output += "No headings found in this note.\n"
+            else:
+                output += "## Structure\n\n"
+                for entry in result['toc']:
+                    indent = "  " * (entry['level'] - 1)
+                    output += f"{indent}- {entry['text']} (#{entry['anchor']}, line {entry['line']})\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error getting TOC: {str(e)}")]
+
+    async def _read_section(self, args: dict) -> list[TextContent]:
+        """Read section tool implementation"""
+        path = args["path"]
+        section = args["section"]
+
+        try:
+            result = self.vault.read_section(path, section)
+
+            output = f"# Section: {result['heading_text']}\n\n"
+            output += f"**Path:** {path}\n"
+            output += f"**Level:** H{result['heading_level']}\n"
+            output += f"**Reference:** {section}\n\n"
+            output += "## Content\n\n"
+            output += result['content']
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error reading section: {str(e)}")]
+
+    async def _read_block(self, args: dict) -> list[TextContent]:
+        """Read block tool implementation"""
+        path = args["path"]
+        block_id = args["block_id"]
+
+        try:
+            result = self.vault.read_block(path, block_id)
+
+            output = f"# Block: ^{block_id}\n\n"
+            output += f"**Path:** {path}\n"
+            output += f"**Block ID:** {block_id}\n\n"
+            output += "## Content\n\n"
+            output += result['content']
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error reading block: {str(e)}")]
+
+    async def _update_section(self, args: dict) -> list[TextContent]:
+        """Update section tool implementation"""
+        path = args["path"]
+        section = args["section"]
+        content = args["content"]
+
+        try:
+            result = self.vault.update_section(path, section, content)
+
+            output = f"# Section Updated\n\n"
+            output += f"**Path:** {path}\n"
+            output += f"**Section:** {section}\n"
+            output += f"**Status:** Successfully updated\n\n"
+            output += f"Note now has {result['size']} bytes and {len(result['content'].split())} words.\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error updating section: {str(e)}")]
+
+    async def _update_block(self, args: dict) -> list[TextContent]:
+        """Update block tool implementation"""
+        path = args["path"]
+        block_id = args["block_id"]
+        content = args["content"]
+
+        try:
+            result = self.vault.update_block(path, block_id, content)
+
+            output = f"# Block Updated\n\n"
+            output += f"**Path:** {path}\n"
+            output += f"**Block ID:** ^{block_id}\n"
+            output += f"**Status:** Successfully updated\n\n"
+            output += f"Note now has {result['size']} bytes and {len(result['content'].split())} words.\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileNotFoundError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error updating block: {str(e)}")]
 
     def get_app(self) -> Server:
         """Get MCP server application"""

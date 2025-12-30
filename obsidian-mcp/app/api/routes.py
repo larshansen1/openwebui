@@ -100,13 +100,56 @@ class GetNoteGraphRequest(BaseModel):
     max_nodes: int = 50
 
 
+class GetTableOfContentsRequest(BaseModel):
+    path: str
+    max_depth: int = 6
+
+
+class ReadSectionRequest(BaseModel):
+    path: str
+    section_ref: str
+
+
+class ReadBlockRequest(BaseModel):
+    path: str
+    block_id: str
+
+
+class UpdateSectionRequest(BaseModel):
+    path: str
+    section_ref: str
+    new_content: str
+
+
+class UpdateBlockRequest(BaseModel):
+    path: str
+    block_id: str
+    new_content: str
+
+
 # Create router
 router = APIRouter(prefix="/tools", tags=["Obsidian Tools"])
 
 
 @router.post("/create_note", dependencies=[Security(verify_api_key)])
 async def create_note(request: CreateNoteRequest):
-    """Create a new note in the vault"""
+    """
+    Create a brand new note in the vault with title, content, and tags.
+
+    Use this tool when:
+    - User asks to "create a new note" or "make a note about..."
+    - You need to create a new document from scratch
+    - User wants to save/store new information
+
+    DO NOT use this when:
+    - The note already exists - use update_note or add_to_note instead
+    - You want to add to an existing note - use add_to_note instead
+
+    The note will be created with:
+    - Frontmatter containing title and optional tags
+    - The specified content as the body
+    - Filename based on the title (e.g., "My Note" → "My Note.md")
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -258,7 +301,20 @@ async def add_to_note(request: AppendToNoteRequest):
 
 @router.post("/search_notes", dependencies=[Security(verify_api_key)])
 async def search_notes(request: SearchNotesRequest):
-    """Search notes by content and tags with optional regex support"""
+    """
+    Search notes by content and tags with optional regex support.
+
+    Use this tool when:
+    - You need to FIND notes containing specific text/keywords
+    - You want to search across multiple notes
+    - You need to filter by tags
+
+    DO NOT use this tool when:
+    - You want to READ a specific section - use read_section instead
+    - You know the exact note and section you want - use read_section instead
+
+    Returns: List of matching notes with excerpts showing where the search term appears
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -282,7 +338,21 @@ async def search_notes(request: SearchNotesRequest):
 
 @router.post("/list_notes", dependencies=[Security(verify_api_key)])
 async def list_notes(request: ListNotesRequest):
-    """List all notes in the vault with optional sorting"""
+    """
+    List all notes in the vault or a specific directory with metadata.
+
+    Use this tool when:
+    - User asks "what notes do I have?" or "list all notes"
+    - You need to see available notes in a folder
+    - You want to get an overview of the vault structure
+    - You need to see recently modified notes (use sort_by: "modified")
+
+    DO NOT use this when:
+    - You want to FIND notes with specific content - use search_notes instead
+    - You already know the note name - use get_note_by_title instead
+
+    Returns: List of notes with paths, titles, size, modified dates, and optionally frontmatter
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -308,7 +378,21 @@ async def list_notes(request: ListNotesRequest):
 
 @router.post("/get_note_by_title", dependencies=[Security(verify_api_key)])
 async def get_note_by_title(request: GetNoteByTitleRequest):
-    """Get a note by its title"""
+    """
+    Get the complete content of a note by its title.
+
+    Use this tool when:
+    - You know the exact note title/name
+    - You want to read the ENTIRE note content
+    - User asks "show me [note name]" or "read [note name]"
+
+    DO NOT use this when:
+    - You only want a specific section - use read_section instead
+    - You want to find notes - use search_notes instead
+    - You only need metadata - use get_note_metadata instead
+
+    Returns: Full note content including frontmatter and body
+    """
     if vault_manager is None:
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
@@ -461,6 +545,203 @@ async def get_note_graph(request: GetNoteGraphRequest):
     except Exception as e:
         logger.error(f"Error getting note graph", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get note graph")
+
+
+@router.post("/get_table_of_contents", dependencies=[Security(verify_api_key)])
+async def get_table_of_contents(request: GetTableOfContentsRequest):
+    """
+    Get hierarchical table of contents from a note showing all section headings.
+
+    Use this tool when:
+    - You need to see what sections/headings exist in a note
+    - You want to understand the structure of a document
+    - You need section names before reading specific sections
+    - User asks "what sections are in..." or "show me the structure of..."
+
+    Returns: List of headings with their levels, anchors, and metadata (word count, reading time)
+    """
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.get_table_of_contents(
+            path=request.path,
+            max_depth=request.max_depth
+        )
+
+        return {
+            "success": True,
+            "toc": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting table of contents", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get table of contents")
+
+
+@router.post("/read_section", dependencies=[Security(verify_api_key)])
+async def read_section(request: ReadSectionRequest):
+    """
+    Read the full content of a specific section from a note by heading name.
+
+    Use this tool when:
+    - You need to read a specific section's content (e.g., "What does section X say?")
+    - You want the complete text under a particular heading
+    - You know which section/heading you want to read
+
+    The heading reference supports fuzzy matching:
+    - Case-insensitive
+    - Ignores markdown formatting (**, *, ~~)
+    - Ignores trailing punctuation (:, ., !, ?)
+
+    Examples:
+    - "Multi-tenant tends to win when" matches "**Multi-tenant tends to win when:**"
+    - "Where each architecture wins" matches "**Where each architecture tends to win**"
+    """
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.read_section(
+            path=request.path,
+            section_ref=request.section_ref
+        )
+
+        return {
+            "success": True,
+            "section": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error reading section", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read section")
+
+
+@router.post("/read_block", dependencies=[Security(verify_api_key)])
+async def read_block(request: ReadBlockRequest):
+    """
+    Read a specific block from a note by its block ID (^block-id).
+
+    Blocks are paragraphs, lists, quotes, or code blocks marked with ^block-id at the end.
+    Example: "This is a paragraph. ^intro" - block_id is "intro"
+
+    Use this tool when:
+    - User references a specific block ID (e.g., "read block intro")
+    - You see ^block-id markers in the note and need to read that specific block
+    - You need precise paragraph/list-level content, not entire sections
+
+    DO NOT use this when:
+    - You want to read by heading - use read_section instead
+    - The note doesn't have block IDs - use read_section or get_note_by_title instead
+
+    Note: Block IDs are manually added by users with ^id syntax, not auto-generated
+    """
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.read_block(
+            path=request.path,
+            block_id=request.block_id
+        )
+
+        return {
+            "success": True,
+            "block": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error reading block", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read block")
+
+
+@router.post("/update_section", dependencies=[Security(verify_api_key)])
+async def update_section(request: UpdateSectionRequest):
+    """
+    Update the content of a specific section (by heading name) in a note.
+
+    Use this tool when:
+    - You need to replace the content under a specific heading
+    - User asks to "update the [section name] section"
+    - You want to rewrite content organized by heading structure
+
+    The heading reference supports fuzzy matching (same as read_section).
+
+    DO NOT use this when:
+    - You want to add to the end of the note - use add_to_note instead
+    - You want to replace the entire note - use update_note instead
+    - You want to update a specific block by ID - use update_block instead
+
+    Note: This replaces the section content, keeping the heading intact
+    """
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.update_section(
+            path=request.path,
+            section_ref=request.section_ref,
+            new_content=request.new_content
+        )
+
+        return {
+            "success": True,
+            "note": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating section", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update section")
+
+
+@router.post("/update_block", dependencies=[Security(verify_api_key)])
+async def update_block(request: UpdateBlockRequest):
+    """
+    Update a specific block (paragraph, list, quote) by its block ID (^block-id).
+
+    Use this tool when:
+    - You need to update content marked with a specific ^block-id
+    - User asks to "update block [id]"
+    - You want precise paragraph/list-level updates
+
+    DO NOT use this when:
+    - You want to update by heading - use update_section instead
+    - The note doesn't have block IDs - use update_section or update_note instead
+    - You want to add content to the end - use add_to_note instead
+
+    Note: The new_content should include the ^block-id marker at the end if you want to preserve it
+    """
+    if vault_manager is None:
+        raise HTTPException(status_code=503, detail="Vault manager not initialized")
+
+    try:
+        result = vault_manager.update_block(
+            path=request.path,
+            block_id=request.block_id,
+            new_content=request.new_content
+        )
+
+        return {
+            "success": True,
+            "note": result
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating block", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update block")
 
 
 @router.get("/list_tags", dependencies=[Security(verify_api_key)])

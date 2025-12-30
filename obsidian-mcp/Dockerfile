@@ -12,6 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
+# Copy test suite
+COPY tests/ ./tests/
+COPY pytest.ini ./
+
 # Create non-root user (Alpine uses adduser, not useradd)
 RUN adduser -D -u 1000 appuser && \
     chown -R appuser:appuser /app
