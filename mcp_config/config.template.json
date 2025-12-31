@@ -2,18 +2,34 @@
   "mcpServers": {
     "time": {
       "command": "uvx",
-      "args": ["mcp-server-time", "--local-timezone=UTC"]
+      "args": [
+        "mcp-server-time",
+        "--local-timezone=UTC"
+      ]
     },
     "fetch": {
       "command": "uvx",
-      "args": ["mcp-server-fetch"]
+      "args": [
+        "mcp-server-fetch"
+      ]
     },
     "brave-search": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
       "env": {
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       }
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mauricio.wolff/mcp-obsidian@latest",
+        "/vault"
+      ]
     }
   }
 }

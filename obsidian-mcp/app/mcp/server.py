@@ -273,6 +273,40 @@ class ObsidianMCPServer:
                         },
                         "required": ["path", "block_id", "content"]
                     }
+                ),
+                Tool(
+                    name="list_templates",
+                    description="List all available templates in the .templates/ folder",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
+                ),
+                Tool(
+                    name="create_from_template",
+                    description="Create a new note from a template with variable substitution",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "template_name": {"type": "string", "description": "Name of template to use (without .md extension)"},
+                            "note_path": {"type": "string", "description": "Path where to create the new note"},
+                            "variables": {"type": "object", "description": "Variables for template substitution (e.g., {\"project_name\": \"MyProject\", \"author\": \"John\"})"},
+                            "frontmatter": {"type": "object", "description": "Additional frontmatter for the note"}
+                        },
+                        "required": ["template_name", "note_path"]
+                    }
+                ),
+                Tool(
+                    name="save_template",
+                    description="Save a template to the .templates/ folder for reuse",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "template_name": {"type": "string", "description": "Name of template (without .md extension)"},
+                            "content": {"type": "string", "description": "Template content with variables like {{variable_name}}"}
+                        },
+                        "required": ["template_name", "content"]
+                    }
                 )
             ]
 
@@ -320,6 +354,12 @@ class ObsidianMCPServer:
                     return await self._update_section(arguments)
                 elif name == "update_block":
                     return await self._update_block(arguments)
+                elif name == "list_templates":
+                    return await self._list_templates(arguments)
+                elif name == "create_from_template":
+                    return await self._create_from_template(arguments)
+                elif name == "save_template":
+                    return await self._save_template(arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             except Exception as e:
@@ -768,6 +808,91 @@ class ObsidianMCPServer:
             return [TextContent(type="text", text=f"Error: {str(e)}")]
         except Exception as e:
             return [TextContent(type="text", text=f"Error updating block: {str(e)}")]
+
+    async def _list_templates(self, args: dict) -> list[TextContent]:
+        """List templates tool implementation"""
+        try:
+            result = self.vault.list_templates()
+
+            output = f"# Available Templates\n\n"
+            output += f"**Count:** {result['count']}\n"
+            output += f"**Directory:** {result['templates_directory']}\n\n"
+
+            if result['templates']:
+                for template in result['templates']:
+                    output += f"## {template['name']}\n"
+                    if template['variables']:
+                        output += f"**Variables:** {', '.join(template['variables'])}\n"
+                    if template['extends']:
+                        output += f"**Extends:** {template['extends']}\n"
+                    if template['includes']:
+                        output += f"**Includes:** {', '.join(template['includes'])}\n"
+                    output += "\n"
+            else:
+                output += "No templates found.\n"
+
+            return [TextContent(type="text", text=output)]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error listing templates: {str(e)}")]
+
+    async def _create_from_template(self, args: dict) -> list[TextContent]:
+        """Create from template tool implementation"""
+        template_name = args["template_name"]
+        note_path = args["note_path"]
+        variables = args.get("variables", {})
+        frontmatter = args.get("frontmatter", {})
+
+        try:
+            result = self.vault.create_from_template(
+                template_name,
+                note_path,
+                variables,
+                frontmatter
+            )
+
+            output = f"# Note Created from Template\n\n"
+            output += f"**Template:** {template_name}\n"
+            output += f"**Path:** {note_path}\n"
+            output += f"**Size:** {result['size']} bytes\n"
+            output += f"**Status:** Successfully created\n\n"
+
+            if variables:
+                output += f"**Variables used:** {', '.join(variables.keys())}\n"
+
+            return [TextContent(type="text", text=output)]
+        except FileExistsError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error creating note from template: {str(e)}")]
+
+    async def _save_template(self, args: dict) -> list[TextContent]:
+        """Save template tool implementation"""
+        template_name = args["template_name"]
+        content = args["content"]
+
+        try:
+            result = self.vault.save_template(template_name, content)
+
+            output = f"# Template Saved\n\n"
+            output += f"**Name:** {result['name']}\n"
+            output += f"**Path:** {result['template_path']}\n"
+
+            if result['variables']:
+                output += f"**Variables:** {', '.join(result['variables'])}\n"
+            if result['extends']:
+                output += f"**Extends:** {result['extends']}\n"
+            if result['includes']:
+                output += f"**Includes:** {', '.join(result['includes'])}\n"
+
+            output += f"\n**Status:** Successfully saved\n"
+
+            return [TextContent(type="text", text=output)]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error saving template: {str(e)}")]
 
     def get_app(self) -> Server:
         """Get MCP server application"""

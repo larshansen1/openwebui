@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # Don't auto-error, we'll handle it in verify_api_key
 
 # Global instances (typed as Optional since they're initialized during lifespan)
 vault_manager: Optional[VaultManager] = None
@@ -36,8 +36,17 @@ file_watcher: Optional[FileWatcher] = None
 mcp_server: Optional[ObsidianMCPServer] = None
 
 
-def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+def verify_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Security(security)):
     """Verify API key from Bearer token (constant-time comparison)"""
+    # Skip authentication in dev mode
+    if settings.devmode:
+        logger.warning("🔓 Dev mode enabled - skipping API key authentication")
+        return "dev-mode"
+    
+    # In production mode, credentials are required
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     if not secrets.compare_digest(credentials.credentials, settings.mcp_api_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return credentials.credentials
@@ -50,7 +59,12 @@ async def lifespan(app: FastAPI):
 
     logger.info("🚀 Starting Obsidian MCP Server")
     logger.info(f"📁 Vault path: {settings.vault_path}")
-    logger.info(f"🔒 API key configured: {len(settings.mcp_api_key)} chars")
+    
+    if settings.devmode:
+        logger.warning("⚠️  DEV MODE ENABLED - Authentication is DISABLED")
+        logger.warning("⚠️  DO NOT USE IN PRODUCTION")
+    else:
+        logger.info(f"🔒 API key configured: {len(settings.mcp_api_key)} chars")
 
     # Initialize vault manager
     vault_manager = VaultManager()
@@ -69,7 +83,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize MCP server
     mcp_server = ObsidianMCPServer(vault_manager)
-    logger.info("✅ MCP server initialized")
+    logger.info("✅ MCP server initialized (23 tools)")
 
     # Get initial stats
     stats = vault_manager.get_vault_stats()
@@ -97,6 +111,7 @@ app = FastAPI(
 
 # Include API routes
 app.include_router(api_routes.router)
+logger.info("✅ Using API routes (/tools/*) - 23 tools exposed via OpenAPI")
 
 
 @app.get("/health")
@@ -173,6 +188,8 @@ async def run_mcp_server():
             on_change_callback=lambda path: vault_manager.invalidate_cache(path)
         )
         file_watcher.start()
+
+        # Initialize MCP server
         mcp_server = ObsidianMCPServer(vault_manager)
 
     # Run MCP server on stdio

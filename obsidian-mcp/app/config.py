@@ -4,7 +4,7 @@ Loads settings from environment variables with validation
 """
 from pathlib import Path
 from typing import Optional
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,9 +26,15 @@ class Settings(BaseSettings):
 
     # API configuration
     mcp_api_key: str = Field(
-        ...,
-        min_length=16,
-        description="API key for MCP server authentication"
+        default="",
+        min_length=0,
+        description="API key for MCP server authentication (not required in dev mode)"
+    )
+
+    # Dev mode configuration
+    devmode: bool = Field(
+        default=False,
+        description="Enable development mode (disables authentication - DO NOT USE IN PRODUCTION)"
     )
 
     # Server configuration
@@ -65,6 +71,7 @@ class Settings(BaseSettings):
         description="Normalize directory paths to lowercase (recommended for cross-platform syncing)"
     )
 
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -85,6 +92,16 @@ class Settings(BaseSettings):
         if not path.is_dir():
             raise ValueError(f"Vault path is not a directory: {v}")
         return str(path.resolve())
+
+    @model_validator(mode='after')
+    def validate_api_key_for_mode(self) -> 'Settings':
+        """Validate API key is provided when not in dev mode"""
+        if not self.devmode:
+            if not self.mcp_api_key:
+                raise ValueError("MCP_API_KEY is required when DEVMODE is not enabled")
+            if len(self.mcp_api_key) < 16:
+                raise ValueError("MCP_API_KEY must be at least 16 characters for security")
+        return self
 
     @property
     def vault_path(self) -> Path:

@@ -11,6 +11,7 @@ from datetime import datetime
 from app.config import settings
 from app.vault.parser import MarkdownParser
 from app.vault.cache import SimpleCache
+from app.vault.templates import TemplateManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class VaultManager:
             max_size=settings.cache_max_size,
             default_ttl=settings.cache_ttl_seconds
         )
+        self.template_manager = TemplateManager(self.vault_path)
         logger.info(f"VaultManager initialized with vault: {self.vault_path}")
 
     def _normalize_path_case(self, path: str) -> str:
@@ -1026,3 +1028,114 @@ class VaultManager:
         logger.info(f"Updated block ^{block_id} in {path}")
 
         return self.read_note(path)
+
+    # ==================== Template Methods ====================
+
+    def list_templates(self) -> Dict[str, Any]:
+        """
+        List all available templates
+
+        Returns:
+            Dict with templates list and metadata
+        """
+        # Check cache first
+        cache_key = "templates:list"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
+        templates = self.template_manager.list_templates()
+
+        result = {
+            "templates": templates,
+            "count": len(templates),
+            "templates_directory": str(self.template_manager.templates_dir)
+        }
+
+        # Cache for 10 minutes
+        self.cache.set(cache_key, result, ttl=600)
+
+        return result
+
+    def create_from_template(
+        self,
+        template_name: str,
+        note_path: str,
+        variables: Optional[Dict[str, str]] = None,
+        frontmatter: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new note from a template
+
+        Args:
+            template_name: Name of template to use (without .md extension)
+            note_path: Path where to create the note
+            variables: Variables for template substitution
+            frontmatter: Additional frontmatter for the note
+
+        Returns:
+            Created note data
+
+        Raises:
+            FileExistsError: If note already exists
+            ValueError: If template not found or rendering fails
+        """
+        # Check if note already exists
+        full_path = self._get_safe_path(note_path)
+        if full_path.exists():
+            raise FileExistsError(f"Note already exists: {note_path}")
+
+        # Render template
+        content = self.template_manager.create_note_from_template(
+            template_name,
+            variables
+        )
+
+        # Create the note
+        result = self.create_note(note_path, content, frontmatter)
+
+        logger.info(f"Created note from template '{template_name}': {note_path}")
+
+        return result
+
+    def save_template(
+        self,
+        template_name: str,
+        content: str
+    ) -> Dict[str, Any]:
+        """
+        Save a template to the .templates/ folder
+
+        Args:
+            template_name: Name of template (without .md extension)
+            content: Template content
+
+        Returns:
+            Template metadata
+
+        Raises:
+            ValueError: If template name is invalid
+        """
+        # Save template
+        success = self.template_manager.save_template(template_name, content)
+
+        if not success:
+            raise ValueError(f"Failed to save template: {template_name}")
+
+        # Invalidate templates cache
+        self.cache.delete("templates:list")
+
+        # Parse template to get metadata
+        from app.vault.templates import TemplateParser
+        parser = TemplateParser()
+        template = parser.parse(content, template_name)
+
+        logger.info(f"Saved template: {template_name}")
+
+        return {
+            "name": template.name,
+            "extends": template.extends,
+            "includes": list(template.includes),
+            "variables": list(template.variables),
+            "template_path": str(self.template_manager.templates_dir / f"{template_name}.md")
+        }

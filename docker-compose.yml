@@ -12,7 +12,7 @@ services:
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openwebui"]
+      test: [ "CMD-SHELL", "pg_isready -U openwebui" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,9 +28,9 @@ services:
     volumes:
       - ./qdrant_data:/qdrant/storage
     ports:
-      - "127.0.0.1:6333:6333"  # Only accessible locally
+      - "127.0.0.1:6333:6333" # Only accessible locally
     healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      test: [ "CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/6333' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,7 +57,7 @@ services:
     volumes:
       - ./ollama_data:/root/.ollama
     ports:
-      - "127.0.0.1:11434:11434"  # Only accessible locally
+      - "127.0.0.1:11434:11434" # Only accessible locally
     networks:
       - openwebui-network
 
@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
     # Note: Running as root due to uvx/npx dynamic package installation requirements
     # Other security measures: localhost binding, resource limits, input validation
-    entrypoint: ["/app/entrypoint.sh"]
+    entrypoint: [ "/app/entrypoint.sh" ]
     environment:
       MCP_API_KEY: ${MCP_API_KEY}
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
@@ -75,8 +75,10 @@ services:
       # Mount only template file, not entire directory - generated config stays in container
       - ./mcp_config/config.template.json:/app/config/config.template.json:ro
       - ./mcp-entrypoint.sh:/app/entrypoint.sh:ro
+      # Mount Obsidian vault for mcp-obsidian server (writable for full CRUD operations)
+      - ${OBSIDIAN_VAULT_PATH}:/vault
     ports:
-      - "127.0.0.1:8000:8000"  # Only accessible locally
+      - "127.0.0.1:8000:8000" # Only accessible locally
     networks:
       - openwebui-network
     deploy:
@@ -87,7 +89,7 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/openapi.json || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/openapi.json || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -100,14 +102,16 @@ services:
     container_name: openwebui-obsidian-mcp
     restart: unless-stopped
     user: "1000:1000"
-    entrypoint: ["/app/obsidian-mcp-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    entrypoint: [ "/app/obsidian-mcp-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000" ]
     environment:
+      DEVMODE: ${DEVMODE:-false} # Enable dev mode (skips authentication)
       MCP_API_KEY: ${MCP_API_KEY}
-      OBSIDIAN_VAULT_PATH: /vault  # Container path (volume mount destination)
+      OBSIDIAN_VAULT_PATH: /vault # Container path (volume mount destination)
+      USE_PROXY_MODE: ${USE_PROXY_MODE:-false} # Enable proxy mode (3 tools) instead of direct mode (23 tools)
     volumes:
       # Dev environment: mount local vault directory (writable for CRUD operations)
       # Prod environment: use syncthing-data volume (comment out dev, uncomment prod)
-      - ${OBSIDIAN_VAULT_PATH}:/vault  # Dev: direct mount (writable)
+      - ${OBSIDIAN_VAULT_PATH}:/vault # Dev: direct mount (writable)
       # - syncthing-data:/vault         # Prod: syncthing volume (add :ro for read-only)
       - ./obsidian-mcp/obsidian-mcp-entrypoint.sh:/app/obsidian-mcp-entrypoint.sh:ro
     ports:
@@ -122,7 +126,7 @@ services:
         reservations:
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -145,8 +149,8 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
-      obsidian-mcp:
-        condition: service_healthy
+      # obsidian-mcp:  # REMOVED: Now using mcp-obsidian via mcpo proxy
+      #   condition: service_healthy
       mcp-server:
         condition: service_healthy
     environment:
@@ -251,7 +255,7 @@ services:
           },
           {
             "type": "openapi",
-            "url": "http://obsidian-mcp:8000",
+            "url": "http://mcp-server:8000/obsidian",
             "spec_type": "url",
             "spec": "",
             "path": "openapi.json",
@@ -259,16 +263,16 @@ services:
             "key": "${MCP_API_KEY}",
             "config": { "enable": true },
             "info": {
-              "id": "obsidian-vault",
+              "id": "obsidian",
               "name": "Obsidian Vault",
-              "description": "Read, create, update, and search Obsidian vault notes with wiki-link resolution"
+              "description": "Read, write, search, and manage Obsidian vault notes"
             }
           }
         ]
     volumes:
       - ./openwebui_data:/app/backend/data
     ports:
-      - "127.0.0.1:3000:8080"  # Only accessible locally, nginx will proxy
+      - "127.0.0.1:3000:8080" # Only accessible locally, nginx will proxy
     networks:
       - openwebui-network
 
@@ -280,12 +284,12 @@ services:
     image: otel/opentelemetry-collector:0.142.0
     container_name: openwebui-otel-collector
     restart: unless-stopped
-    command: ["--config=/etc/otel-collector-config.yml"]
+    command: [ "--config=/etc/otel-collector-config.yml" ]
     volumes:
       - ./monitoring/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
     ports:
-      - "4317:4317"  # OTLP gRPC receiver (internal only)
-      - "8889:8889"  # Prometheus exporter (internal only)
+      - "4317:4317" # OTLP gRPC receiver (internal only)
+      - "8889:8889" # Prometheus exporter (internal only)
     networks:
       - openwebui-network
     # Note: No healthcheck - collector doesn't include wget/curl, and it's working fine
@@ -294,7 +298,7 @@ services:
     image: prom/prometheus:v3.8.1
     container_name: openwebui-prometheus
     restart: unless-stopped
-    user: "65534:65534"  # Run as nobody user to match file permissions
+    user: "65534:65534" # Run as nobody user to match file permissions
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -307,11 +311,11 @@ services:
       - ./monitoring/secrets:/etc/prometheus/secrets:ro
       - ./prometheus_data:/prometheus
     ports:
-      - "127.0.0.1:9090:9090"  # Prometheus web UI (localhost only)
+      - "127.0.0.1:9090:9090" # Prometheus web UI (localhost only)
     networks:
       - openwebui-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -320,7 +324,7 @@ services:
     image: grafana/grafana:12.1.1
     container_name: openwebui-grafana
     restart: unless-stopped
-    user: "472:472"  # Run as grafana user to match file permissions
+    user: "472:472" # Run as grafana user to match file permissions
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_SERVER_ROOT_URL=http://localhost:3001
@@ -329,13 +333,13 @@ services:
       - ./grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "127.0.0.1:3001:3000"  # Grafana web UI (localhost only, access via SSH tunnel)
+      - "127.0.0.1:3001:3000" # Grafana web UI (localhost only, access via SSH tunnel)
     networks:
       - openwebui-network
     depends_on:
       - prometheus
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -344,7 +348,7 @@ services:
     image: prom/alertmanager:v0.29.0
     container_name: openwebui-alertmanager
     restart: unless-stopped
-    user: "65534:65534"  # Run as nobody user to match file permissions
+    user: "65534:65534" # Run as nobody user to match file permissions
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -352,11 +356,11 @@ services:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./alertmanager_data:/alertmanager
     ports:
-      - "127.0.0.1:9093:9093"  # Alertmanager web UI (localhost only)
+      - "127.0.0.1:9093:9093" # Alertmanager web UI (localhost only)
     networks:
       - openwebui-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -371,7 +375,7 @@ services:
     networks:
       - openwebui-network
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: [ "CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3

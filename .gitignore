@@ -43,3 +43,16 @@ actions-runner/
 prometheus_data/
 grafana_data/
 alertmanager_data/
+
+# Logs
+logs/
+
+# Python bytecode (build artifacts - never commit)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Specific backup files (not user docs)
+.env.backup
+docker-compose.yml.backup*

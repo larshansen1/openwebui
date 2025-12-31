@@ -13,17 +13,89 @@ from app.config import settings
 from app.vault.manager import VaultManager
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # Don't auto-error, we'll handle it in verify_api_key
 
 # Global vault manager (will be set by main.py)
 vault_manager: Optional[VaultManager] = None
 
 
-def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+def verify_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Security(security)):
     """Verify API key from Bearer token (constant-time comparison)"""
+    # Skip authentication in dev mode
+    if settings.devmode:
+        logger.warning("🔓 Dev mode enabled - skipping API key authentication")
+        return "dev-mode"
+    
+    # In production mode, credentials are required
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     if not secrets.compare_digest(credentials.credentials, settings.mcp_api_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return credentials.credentials
+
+
+def normalize_tags(tags: List[str]) -> tuple[List[str], List[str]]:
+    """
+    Normalize tags by removing # prefix if present.
+
+    Frontmatter tags should NOT have # prefix (only inline tags do).
+
+    Args:
+        tags: List of tag strings
+
+    Returns:
+        Tuple of (normalized_tags, warnings)
+    """
+    normalized = []
+    warnings = []
+    for tag in tags:
+        if isinstance(tag, str):
+            # Remove leading # if present
+            normalized_tag = tag.lstrip('#').strip()
+            if normalized_tag:  # Only add non-empty tags
+                normalized.append(normalized_tag)
+                if tag.startswith('#'):
+                    warnings.append(f"Normalized '{tag}' to '{normalized_tag}' (frontmatter tags don't use #)")
+                    logger.info(f"Normalized tag '{tag}' to '{normalized_tag}' (removed # prefix)")
+        else:
+            # Non-string tag, keep as-is
+            normalized.append(tag)
+    return normalized, warnings
+
+
+def normalize_frontmatter_tags(frontmatter: Dict[str, Any]) -> tuple[Dict[str, Any], List[str]]:
+    """
+    Normalize tags in frontmatter by removing # prefix if present.
+
+    Args:
+        frontmatter: Frontmatter dictionary
+
+    Returns:
+        Tuple of (frontmatter with normalized tags, list of warnings)
+    """
+    warnings = []
+
+    if 'tags' not in frontmatter:
+        return frontmatter, warnings
+
+    tags = frontmatter['tags']
+
+    # Handle different tag formats
+    if isinstance(tags, list):
+        normalized_tags, tag_warnings = normalize_tags(tags)
+        frontmatter['tags'] = normalized_tags
+        warnings.extend(tag_warnings)
+    elif isinstance(tags, str):
+        # Single tag or comma/space separated
+        # Remove # prefix and split
+        normalized = tags.lstrip('#').strip()
+        frontmatter['tags'] = [normalized] if normalized else []
+        if tags.startswith('#'):
+            warnings.append(f"Normalized '{tags}' to '{normalized}' (frontmatter tags don't use #)")
+            logger.info(f"Normalized tag string '{tags}' to '{normalized}'")
+
+    return frontmatter, warnings
 
 
 # Request/Response models
@@ -156,8 +228,13 @@ async def create_note(request: CreateNoteRequest):
     try:
         # Build frontmatter
         frontmatter = {"title": request.title}
+        warnings = []
+
         if request.tags:
-            frontmatter["tags"] = request.tags
+            # Normalize tags (remove # prefix if present)
+            normalized_tags, tag_warnings = normalize_tags(request.tags)
+            frontmatter["tags"] = normalized_tags
+            warnings.extend(tag_warnings)
 
         # Create note (title will be used as filename)
         note = vault_manager.create_note(
@@ -166,10 +243,15 @@ async def create_note(request: CreateNoteRequest):
             frontmatter=frontmatter
         )
 
-        return {
+        # Include warnings in response if any
+        response = {
             "success": True,
             "note": note
         }
+        if warnings:
+            response["tag_normalization_warnings"] = warnings
+
+        return response
     except FileExistsError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
@@ -188,17 +270,30 @@ async def update_note(request: UpdateNoteRequest):
         raise HTTPException(status_code=503, detail="Vault manager not initialized")
 
     try:
+        warnings = []
+        frontmatter = request.frontmatter
+
+        # Normalize tags in frontmatter (remove # prefix if present)
+        if frontmatter and 'tags' in frontmatter:
+            frontmatter, tag_warnings = normalize_frontmatter_tags(frontmatter)
+            warnings.extend(tag_warnings)
+
         note = vault_manager.update_note(
             path=request.file_path,
             content=request.content,
-            frontmatter=request.frontmatter,
+            frontmatter=frontmatter,
             append=request.append
         )
 
-        return {
+        # Include warnings in response if any
+        response = {
             "success": True,
             "note": note
         }
+        if warnings:
+            response["tag_normalization_warnings"] = warnings
+
+        return response
     except HTTPException:
         raise
     except FileNotFoundError as e:
@@ -776,3 +871,141 @@ async def list_tags():
     except Exception as e:
         logger.error(f"Error listing tags", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list tags")
+
+
+# ==================== Template Endpoints ====================
+
+class CreateFromTemplateRequest(BaseModel):
+    template_name: str
+    note_path: str
+    variables: Optional[Dict[str, str]] = None
+    frontmatter: Optional[Dict[str, Any]] = None
+
+
+class SaveTemplateRequest(BaseModel):
+    template_name: str
+    content: str
+
+
+@router.post("/list_templates", dependencies=[Security(verify_api_key)])
+async def list_templates():
+    """
+    List all available templates in the .templates/ folder.
+
+    Use this tool when:
+    - You want to see what templates are available
+    - You need to know what variables a template expects
+    - User asks "what templates exist" or "show me the templates"
+
+    Returns: List of template metadata including name, variables, extends, and includes
+    """
+    try:
+        result = vault_manager.list_templates()
+
+        return {
+            "success": True,
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Error listing templates", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
+
+
+@router.post("/create_from_template", dependencies=[Security(verify_api_key)])
+async def create_from_template(request: CreateFromTemplateRequest):
+    """
+    Create a new note from a template with variable substitution.
+
+    Use this tool when:
+    - You want to create a note using a predefined template
+    - You need consistent note structure (e.g., meeting notes, project plans)
+    - User asks to "create a note from template X"
+
+    Templates support:
+    - Variable substitution: {{variable_name}}
+    - Built-in macros: {{date}}, {{time}}, {{datetime}}, {{date:%Y-%m-%d}}
+    - Template inheritance: {% extends "base" %}
+    - Template includes: {% include "header" %}
+
+    Example variables:
+    {
+      "project_name": "My Project",
+      "author": "John Doe",
+      "priority": "high"
+    }
+
+    Returns: Created note metadata with path, size, and status
+    """
+    try:
+        result = vault_manager.create_from_template(
+            template_name=request.template_name,
+            note_path=request.note_path,
+            variables=request.variables,
+            frontmatter=request.frontmatter
+        )
+
+        return {
+            "success": True,
+            **result
+        }
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating note from template", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create note from template: {str(e)}")
+
+
+@router.post("/save_template", dependencies=[Security(verify_api_key)])
+async def save_template(request: SaveTemplateRequest):
+    """
+    Save a template to the .templates/ folder for future reuse.
+
+    Use this tool when:
+    - You want to save a note structure as a template
+    - You need to create reusable note formats
+    - User asks to "save this as a template" or "create a template"
+
+    Template syntax:
+    - Variables: {{variable_name}}
+    - Date macro: {{date}} or {{date:%Y-%m-%d}}
+    - Time macro: {{time}}
+    - Datetime macro: {{datetime}}
+    - Extends: {% extends "base_template" %}
+    - Include: {% include "header_template" %}
+
+    Example template content:
+    ```markdown
+    ---
+    title: {{project_name}}
+    author: {{author}}
+    created: {{date}}
+    ---
+
+    # {{project_name}}
+
+    ## Overview
+    [Your overview here]
+
+    ## Timeline
+    Created: {{datetime}}
+    ```
+
+    Returns: Template metadata including name, variables, and file path
+    """
+    try:
+        result = vault_manager.save_template(
+            template_name=request.template_name,
+            content=request.content
+        )
+
+        return {
+            "success": True,
+            **result
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error saving template", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
