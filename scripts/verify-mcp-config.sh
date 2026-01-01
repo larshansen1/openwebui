@@ -111,47 +111,18 @@ fi
 
 echo "✓ Tool functionality verified"
 
-# 7. Verify obsidian-mcp is healthy and responding
-echo "Verifying Obsidian MCP server..."
-OBSIDIAN_HEALTH=$(docker exec openwebui curl -s \
-    http://obsidian-mcp:8000/health 2>/dev/null || echo "FAILED")
-
-if ! echo "$OBSIDIAN_HEALTH" | grep -q "healthy"; then
-    echo "ERROR: Obsidian MCP health check failed"
-    echo "Response: $OBSIDIAN_HEALTH"
-    exit 1
-fi
-
-echo "✓ Obsidian MCP is healthy"
-
-# 8. Verify obsidian-mcp mode matches USE_PROXY_MODE setting
-echo "Verifying Obsidian MCP endpoint mode..."
-OBSIDIAN_PATHS=$(docker exec openwebui curl -s \
-    http://obsidian-mcp:8000/openapi.json 2>/dev/null | \
-    python3 -c "import sys,json; print(','.join(json.load(sys.stdin).get('paths',{}).keys()))" 2>/dev/null || echo "FAILED")
-
-# Check if in proxy mode (has /mcp/execute) or direct mode (has /tools/)
-if echo "$OBSIDIAN_PATHS" | grep -q "/mcp/execute"; then
-    echo "✓ Obsidian MCP in proxy mode (3 proxy tools)"
-elif echo "$OBSIDIAN_PATHS" | grep -q "/tools/"; then
-    echo "✓ Obsidian MCP in direct mode (23+ direct tools)"
-else
-    echo "ERROR: Obsidian MCP has unexpected endpoint configuration"
-    echo "Endpoints: $OBSIDIAN_PATHS"
-    exit 1
-fi
-
-# 9. Test obsidian-mcp authentication
-OBSIDIAN_AUTH=$(docker exec openwebui curl -s -X GET \
+# 7. Verify Obsidian integration via mcpo proxy
+echo "Verifying Obsidian integration via MCP proxy..."
+OBSIDIAN_TEST=$(docker exec openwebui curl -s \
     -H "Authorization: Bearer ${MCP_API_KEY}" \
-    http://obsidian-mcp:8000/vault/stats 2>/dev/null || echo "FAILED")
+    http://mcp-server:8000/obsidian/openapi.json 2>/dev/null || echo "FAILED")
 
-if echo "$OBSIDIAN_AUTH" | grep -q "Invalid API key\|403\|401\|Forbidden"; then
-    echo "ERROR: Obsidian MCP authentication failed"
-    echo "Response: $OBSIDIAN_AUTH"
+if echo "$OBSIDIAN_TEST" | grep -q "FAILED\|error\|404"; then
+    echo "ERROR: Obsidian integration via MCP proxy failed"
+    echo "Response: $OBSIDIAN_TEST"
     exit 1
 fi
 
-echo "✓ Obsidian MCP authentication successful"
+echo "✓ Obsidian integration via MCP proxy is working"
 echo ""
 echo "✅ All checks passed - MCP tools are configured correctly!"

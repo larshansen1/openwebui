@@ -12,10 +12,8 @@ echo "   does NOT reload environment variables from .env file."
 echo ""
 
 # Recreate only the necessary containers (not postgres which has data)
-# Note: obsidian-mcp is included because OpenWebUI caches its OpenAPI spec on startup
-#       so it must be recreated BEFORE openwebui to pick up proxy mode changes
-echo "Recreating obsidian-mcp, openwebui, and mcp-server containers..."
-docker compose up -d --force-recreate obsidian-mcp mcp-server openwebui
+echo "Recreating openwebui and mcp-server containers..."
+docker compose up -d --force-recreate mcp-server openwebui
 
 echo ""
 echo "✓ Containers recreated with latest environment variables"

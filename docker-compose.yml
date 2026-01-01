@@ -65,8 +65,7 @@ services:
     image: ghcr.io/open-webui/mcpo:latest
     container_name: openwebui-mcp-server
     restart: unless-stopped
-    # Note: Running as root due to uvx/npx dynamic package installation requirements
-    # Other security measures: localhost binding, resource limits, input validation
+    user: "1000:1000"  # Run as user 1000 to match vault permissions (syncthing PUID/PGID)
     entrypoint: [ "/app/entrypoint.sh" ]
     environment:
       MCP_API_KEY: ${MCP_API_KEY}
@@ -94,43 +93,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
-  obsidian-mcp:
-    build:
-      context: ./obsidian-mcp
-      dockerfile: Dockerfile
-    container_name: openwebui-obsidian-mcp
-    restart: unless-stopped
-    user: "1000:1000"
-    entrypoint: [ "/app/obsidian-mcp-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000" ]
-    environment:
-      DEVMODE: ${DEVMODE:-false} # Enable dev mode (skips authentication)
-      MCP_API_KEY: ${MCP_API_KEY}
-      OBSIDIAN_VAULT_PATH: /vault # Container path (volume mount destination)
-      USE_PROXY_MODE: ${USE_PROXY_MODE:-false} # Enable proxy mode (3 tools) instead of direct mode (23 tools)
-    volumes:
-      # Dev environment: mount local vault directory (writable for CRUD operations)
-      # Prod environment: use syncthing-data volume (comment out dev, uncomment prod)
-      - ${OBSIDIAN_VAULT_PATH}:/vault # Dev: direct mount (writable)
-      # - syncthing-data:/vault         # Prod: syncthing volume (add :ro for read-only)
-      - ./obsidian-mcp/obsidian-mcp-entrypoint.sh:/app/obsidian-mcp-entrypoint.sh:ro
-    ports:
-      - "127.0.0.1:8001:8000"
-    networks:
-      - openwebui-network
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 128M
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8000/health || exit 1" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   openwebui:
     build:
