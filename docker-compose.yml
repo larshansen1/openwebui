@@ -70,6 +70,9 @@ services:
     environment:
       MCP_API_KEY: ${MCP_API_KEY}
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      HOME: /tmp  # Set writable home for uvx/npx cache directories
+      NPM_CONFIG_CACHE: /tmp/.npm  # npm cache directory
+      UV_CACHE_DIR: /tmp/.cache/uv  # uv cache directory
     volumes:
       # Mount only template file, not entire directory - generated config stays in container
       - ./mcp_config/config.template.json:/app/config/config.template.json:ro
