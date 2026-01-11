@@ -54,4 +54,4 @@ __pycache__/
 .env.backup
 docker-compose.yml.backup*
 
-obsidian-mcp/
+obsidian-mcp/test-vault/*

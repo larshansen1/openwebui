@@ -2,7 +2,8 @@
 # Open WebUI Version Check Script
 # Displays version information for Open WebUI container and software
 
-set -e
+# Don't exit on errors - we want to show as much info as possible
+set +e
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -56,21 +57,31 @@ echo "  Built: $IMAGE_CREATED"
 echo "  Git Commit: $GIT_REVISION"
 echo "  Branch: $IMAGE_VERSION"
 
-# Get architecture
-ARCH=$(docker inspect ghcr.io/open-webui/open-webui:main --format='{{.Architecture}}' 2>/dev/null)
-echo "  Architecture: $ARCH"
+# Get architecture from the container's image
+ARCH=$(docker inspect openwebui --format='{{.Image}}' 2>/dev/null | xargs -I {} docker inspect {} --format='{{.Architecture}}' 2>/dev/null)
+if [ -n "$ARCH" ]; then
+    echo "  Architecture: $ARCH"
+else
+    echo "  Architecture: N/A"
+fi
 
 echo ""
 echo -e "${GREEN}Related Components:${NC}"
 # Check other running containers
-docker ps --filter "name=openwebui-" --format "  {{.Names}}: {{.Image}}" | sed 's/openwebui-/  /' | sort
+COMPONENTS=$(docker ps --filter "name=openwebui-" --format "  {{.Names}}: {{.Image}}" 2>/dev/null | sed 's/openwebui-/  /' | sort)
+if [ -n "$COMPONENTS" ]; then
+    echo "$COMPONENTS"
+else
+    echo "  No related components found"
+fi
 
 echo ""
 echo -e "${YELLOW}Compatibility Notes:${NC}"
 # Check for compatibility warnings in logs
-if docker logs openwebui 2>&1 | grep -q "incompatible"; then
+WARNINGS=$(docker logs openwebui 2>&1 | grep -i "incompatible" | tail -3)
+if [ -n "$WARNINGS" ]; then
     echo -e "  ${YELLOW}⚠ Compatibility warnings found in logs:${NC}"
-    docker logs openwebui 2>&1 | grep -i "incompatible" | tail -3 | sed 's/^/    /'
+    echo "$WARNINGS" | sed 's/^/    /'
 else
     echo "  ✓ No compatibility warnings detected"
 fi
