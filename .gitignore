@@ -53,3 +53,5 @@ __pycache__/
 # Specific backup files (not user docs)
 .env.backup
 docker-compose.yml.backup*
+
+obsidian-mcp/
