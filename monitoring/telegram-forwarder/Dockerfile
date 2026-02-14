@@ -1,9 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.11.14-slim
 
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir flask requests
+RUN pip install --no-cache-dir flask==3.1.2 requests==2.32.5
 
 # Copy application
 COPY app.py .

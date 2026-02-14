@@ -1,11 +1,11 @@
-# Base image: Open WebUI v0.7.2 (pinned version for stability)
-FROM ghcr.io/open-webui/open-webui:v0.7.2
+# Base image: Open WebUI v0.8.1 (pinned version for stability)
+FROM ghcr.io/open-webui/open-webui:v0.8.1
 
 # Switch to root to install additional packages and set permissions
 USER root
 
 # Install additional Python packages
-RUN pip install youtube-transcript-api
+RUN pip install youtube-transcript-api==1.2.4
 
 # Ensure data directories exist and have correct permissions
 RUN mkdir -p /app/backend/data/uploads && \

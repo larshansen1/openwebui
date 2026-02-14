@@ -1,5 +1,5 @@
 # Base image: Ollama official image
-FROM ollama/ollama:latest
+FROM ollama/ollama:0.16.1
 
 # Build argument for embedding model (passed from docker-compose)
 ARG EMBEDDING_MODEL=nomic-embed-text

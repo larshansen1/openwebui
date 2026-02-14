@@ -2,7 +2,7 @@
 # Deployed via GitHub Actions CI/CD pipeline
 services:
   postgres:
-    image: postgres:17.7
+    image: postgres:17.8
     container_name: openwebui-postgres
     restart: unless-stopped
     environment:
@@ -20,7 +20,7 @@ services:
       - openwebui-network
 
   qdrant:
-    image: qdrant/qdrant:v1.16.2
+    image: qdrant/qdrant:v1.16.3
     container_name: openwebui-qdrant
     restart: unless-stopped
     environment:
@@ -246,7 +246,7 @@ services:
   # ============================================================================
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.143.1
+    image: otel/opentelemetry-collector:0.145.0
     container_name: openwebui-otel-collector
     restart: unless-stopped
     command: [ "--config=/etc/otel-collector-config.yml" ]
@@ -286,7 +286,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:12.3.1
+    image: grafana/grafana:12.3.2-security-01
     container_name: openwebui-grafana
     restart: unless-stopped
     user: "472:472" # Run as grafana user to match file permissions
@@ -310,7 +310,7 @@ services:
       retries: 3
 
   alertmanager:
-    image: prom/alertmanager:v0.30.0
+    image: prom/alertmanager:v0.31.1
     container_name: openwebui-alertmanager
     restart: unless-stopped
     user: "65534:65534" # Run as nobody user to match file permissions
