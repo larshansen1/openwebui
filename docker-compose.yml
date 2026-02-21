@@ -1,5 +1,12 @@
 # Open WebUI Production Stack
 # Deployed via GitHub Actions CI/CD pipeline
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17.8
@@ -18,6 +25,7 @@ services:
       retries: 5
     networks:
       - openwebui-network
+    logging: *default-logging
 
   qdrant:
     image: qdrant/qdrant:v1.16.3
@@ -37,6 +45,7 @@ services:
       start_period: 10s
     networks:
       - openwebui-network
+    logging: *default-logging
 
   ollama:
     build:
@@ -60,6 +69,7 @@ services:
       - "127.0.0.1:11434:11434" # Only accessible locally
     networks:
       - openwebui-network
+    logging: *default-logging
 
   mcp-server:
     image: ghcr.io/open-webui/mcpo:latest
@@ -96,6 +106,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging: *default-logging
 
   openwebui:
     build:
@@ -240,6 +251,7 @@ services:
       - "127.0.0.1:3000:8080" # Only accessible locally, nginx will proxy
     networks:
       - openwebui-network
+    logging: *default-logging
 
   # ============================================================================
   # Monitoring Stack
@@ -249,7 +261,9 @@ services:
     image: otel/opentelemetry-collector:0.145.0
     container_name: openwebui-otel-collector
     restart: unless-stopped
-    command: [ "--config=/etc/otel-collector-config.yml" ]
+    command:
+      - "--config=/etc/otel-collector-config.yml"
+      - "--set=service.telemetry.logs.level=warn"
     volumes:
       - ./monitoring/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
     ports:
@@ -257,6 +271,7 @@ services:
       - "8889:8889" # Prometheus exporter (internal only)
     networks:
       - openwebui-network
+    logging: *default-logging
     # Note: No healthcheck - collector doesn't include wget/curl, and it's working fine
 
   prometheus:
@@ -284,6 +299,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
 
   grafana:
     image: grafana/grafana:12.3.2-security-01
@@ -308,6 +324,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
 
   alertmanager:
     image: prom/alertmanager:v0.31.1
@@ -329,6 +346,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
 
   telegram-forwarder:
     build: ./monitoring/telegram-forwarder
@@ -344,6 +362,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging: *default-logging
 
 networks:
   openwebui-network:
